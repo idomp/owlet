@@ -108,6 +108,24 @@
       },
       "base_station_on": {
         "name": "Base station on"
+      },
+      "discomfort_alrt": {
+        "name": "Discomfort alert"
+      },
+      "low_integ_read": {
+        "name": "Low integrity reading"
+      },
+      "preview_high_alarm": {
+        "name": "Preview high priority alarm"
+      },
+      "preview_med_alarm": {
+        "name": "Preview medium priority alarm"
+      },
+      "preview_low_alarm": {
+        "name": "Preview low priority alarm"
+      },
+      "preview_drm_alarm": {
+        "name": "Preview DRM priority alarm"
       }
     },
     "sensor": {
@@ -149,6 +167,18 @@
       },
       "last_updated": {
         "name": "Last reading"
+      },
+      "last_red_alert": {
+        "name": "Last red alert"
+      },
+      "alerts_mask": {
+        "name": "Alerts mask"
+      },
+      "base_mon_status": {
+        "name": "Base monitoring status"
+      },
+      "battery_status": {
+        "name": "Battery status"
       }
     }
   },

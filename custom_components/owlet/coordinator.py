@@ -167,9 +167,11 @@ class OwletCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None, REASON_NO_TIMESTAMP
         return parse_reading_timestamp(prop.get("data_updated_at"), dt_util.utcnow())
 
-    def _property_updated_at(self, raw_key: str) -> datetime | None:
+    def property_updated_at(self, raw_key: str) -> datetime | None:
         """Return the sanitised timestamp of a raw Ayla property."""
         return self._raw_timestamp(raw_key)[0]
+
+    _property_updated_at = property_updated_at
 
     @property
     def last_updated(self) -> datetime | None:

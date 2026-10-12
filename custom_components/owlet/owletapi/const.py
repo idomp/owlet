@@ -11,6 +11,14 @@ PropertyKey = Literal[
     "lost_power_alert",
     "sock_disconnected",
     "sock_off",
+    "discomfort_alert",
+    "low_integrity_reading",
+    "preview_high_priority_alarm",
+    "preview_medium_priority_alarm",
+    "preview_low_priority_alarm",
+    "preview_drm_priority_alarm",
+    "base_monitoring_status",
+    "battery_status",
     "oxygen_saturation",
     "heart_rate",
     "battery_percentage",
@@ -40,43 +48,55 @@ PropertyKey = Literal[
 
 
 class Properties(TypedDict, total=False):
-    critical_battery_alert: bool
-    critical_oxygen_alert: bool
-    high_oxygen_alert: bool
-    low_battery_alert: bool
-    low_heart_rate_alert: bool
-    high_heart_rate_alert: bool
-    low_oxygen_alert: bool
-    ppg_log_file: bool
-    firmware_update_available: bool
-    lost_power_alert: bool
-    sock_disconnected: bool
-    sock_off: bool
-    oxygen_saturation: float
-    heart_rate: float
-    battery_percentage: float
-    battery_minutes: float
-    signal_strength: float
-    oxygen_10_av: float
-    base_station_on: int
-    sock_connection: int
-    skin_temperature: int
-    sleep_state: int
-    movement: int
-    alert_paused_status: int
-    charging: int
-    alerts_mask: int
-    update_status: int
-    readings_flag: int
-    brick_status: int
-    movement_bucket: int
-    wellness_alert: int
-    monitoring_start_time: int
-    base_battery_status: int
-    hardware_version: str
-    last_updated: str
+    """Normalised properties. A key is present when the sock reports the
+    property; its value is None when the cloud sent nothing usable for it."""
+
+    critical_battery_alert: bool | None
+    critical_oxygen_alert: bool | None
+    high_oxygen_alert: bool | None
+    low_battery_alert: bool | None
+    low_heart_rate_alert: bool | None
+    high_heart_rate_alert: bool | None
+    low_oxygen_alert: bool | None
+    ppg_log_file: bool | None
+    firmware_update_available: bool | None
+    lost_power_alert: bool | None
+    sock_disconnected: bool | None
+    sock_off: bool | None
+    discomfort_alert: bool | None
+    low_integrity_reading: bool | None
+    preview_high_priority_alarm: bool | None
+    preview_medium_priority_alarm: bool | None
+    preview_low_priority_alarm: bool | None
+    preview_drm_priority_alarm: bool | None
+    base_monitoring_status: int | None
+    battery_status: int | None
+    oxygen_saturation: float | None
+    heart_rate: float | None
+    battery_percentage: float | None
+    battery_minutes: float | None
+    signal_strength: float | None
+    oxygen_10_av: float | None
+    base_station_on: bool | None
+    sock_connection: int | None
+    skin_temperature: int | None
+    sleep_state: int | None
+    movement: int | None
+    alert_paused_status: int | None
+    charging: int | None
+    alerts_mask: int | None
+    update_status: int | None
+    readings_flag: int | None
+    brick_status: int | None
+    movement_bucket: int | None
+    wellness_alert: int | None
+    monitoring_start_time: int | None
+    base_battery_status: int | None
+    hardware_version: str | None
+    last_updated: str | None
 
 
+# Stand-alone Ayla properties, grouped by the type they are decoded to.
 PROPERTIES: dict[type, dict[PropertyKey, str]] = {
     bool: {
         "high_oxygen_alert": "HIGH_OX_ALRT",
@@ -91,9 +111,20 @@ PROPERTIES: dict[type, dict[PropertyKey, str]] = {
         "sock_off": "SOCK_OFF",
         "critical_battery_alert": "CRIT_BATT_ALRT",
         "critical_oxygen_alert": "CRIT_OX_ALRT",
+        "discomfort_alert": "DISCOMFORT_ALRT",
+        "low_integrity_reading": "LOW_INTEG_READ",
+        "preview_high_priority_alarm": "PREVIEW_HIGH_PRIORITY_ALARM",
+        "preview_medium_priority_alarm": "PREVIEW_MED_PRIORITY_ALARM",
+        "preview_low_priority_alarm": "PREVIEW_LOW_PRIORITY_ALARM",
+        "preview_drm_priority_alarm": "PREVIEW_DRM_PRIORITY_ALARM",
+    },
+    int: {
+        "base_monitoring_status": "BASE_MON_STATUS",
+        "battery_status": "BATTERY_STATUS",
     },
 }
 
+# Keys inside the REAL_TIME_VITALS JSON of the Smart Sock 3 / Dream Sock.
 VITALS_3: dict[type, dict[PropertyKey, str]] = {
     float: {
         "oxygen_saturation": "ox",
@@ -150,6 +181,18 @@ VITALS_2: dict[type, dict[PropertyKey, str]] = {
     str: {
         "hardware_version": "oem_sock_version",
     },
+}
+
+# Readings outside these ranges are sentinels, not measurements: the sock
+# reports 0 for heart rate, oxygen and skin temperature while it is not
+# measuring (charging, not worn) and 255 for the ten minute oxygen average
+# until it has ten minutes of data. They are decoded to None so they are never
+# recorded as real values.
+VALID_RANGES: dict[PropertyKey, tuple[float, float]] = {
+    "heart_rate": (1, 300),
+    "oxygen_saturation": (1, 100),
+    "oxygen_10_av": (1, 100),
+    "skin_temperature": (1, 60),
 }
 
 # The only properties this client is allowed to write. APP_ACTIVE tells the

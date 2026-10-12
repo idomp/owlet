@@ -108,6 +108,24 @@
       },
       "base_station_on": {
         "name": "Station de base allumée"
+      },
+      "discomfort_alrt": {
+        "name": "Alerte d'inconfort"
+      },
+      "low_integ_read": {
+        "name": "Mesure peu fiable"
+      },
+      "preview_high_alarm": {
+        "name": "Pré-alarme priorité haute"
+      },
+      "preview_med_alarm": {
+        "name": "Pré-alarme priorité moyenne"
+      },
+      "preview_low_alarm": {
+        "name": "Pré-alarme priorité basse"
+      },
+      "preview_drm_alarm": {
+        "name": "Pré-alarme priorité DRM"
       }
     },
     "sensor": {
@@ -149,6 +167,18 @@
       },
       "last_updated": {
         "name": "Dernière mesure"
+      },
+      "last_red_alert": {
+        "name": "Dernière alerte rouge"
+      },
+      "alerts_mask": {
+        "name": "Masque d'alertes"
+      },
+      "base_mon_status": {
+        "name": "État de surveillance de la base"
+      },
+      "battery_status": {
+        "name": "État de la batterie"
       }
     }
   },

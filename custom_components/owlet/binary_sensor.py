@@ -104,6 +104,43 @@ SENSORS: tuple[OwletBinarySensorEntityDescription, ...] = (
         device_class=BinarySensorDeviceClass.POWER,
         available_during_charging=True,
     ),
+    OwletBinarySensorEntityDescription(
+        key="discomfort_alert",
+        translation_key="discomfort_alrt",
+        device_class=BinarySensorDeviceClass.SOUND,
+        available_during_charging=True,
+    ),
+    OwletBinarySensorEntityDescription(
+        key="low_integrity_reading",
+        translation_key="low_integ_read",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        available_during_charging=True,
+    ),
+    OwletBinarySensorEntityDescription(
+        key="preview_high_priority_alarm",
+        translation_key="preview_high_alarm",
+        device_class=BinarySensorDeviceClass.SOUND,
+        available_during_charging=True,
+    ),
+    OwletBinarySensorEntityDescription(
+        key="preview_medium_priority_alarm",
+        translation_key="preview_med_alarm",
+        device_class=BinarySensorDeviceClass.SOUND,
+        available_during_charging=True,
+    ),
+    OwletBinarySensorEntityDescription(
+        key="preview_low_priority_alarm",
+        translation_key="preview_low_alarm",
+        device_class=BinarySensorDeviceClass.SOUND,
+        available_during_charging=True,
+    ),
+    OwletBinarySensorEntityDescription(
+        key="preview_drm_priority_alarm",
+        translation_key="preview_drm_alarm",
+        device_class=BinarySensorDeviceClass.SOUND,
+        available_during_charging=True,
+    ),
 )
 
 

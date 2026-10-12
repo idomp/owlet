@@ -48,6 +48,31 @@ async def test_binary_sensors_asleep(
     assert _state(hass, "data_stale") == STATE_OFF
     for alert in ALERTS:
         assert _state(hass, alert) == STATE_OFF, alert
+    for key in (
+        "discomfort_alert",
+        "low_integrity_reading",
+        "preview_high_priority_alarm",
+        "preview_medium_priority_alarm",
+        "preview_low_priority_alarm",
+        "preview_drm_priority_alarm",
+    ):
+        assert _state(hass, key) == STATE_OFF, key
+
+
+async def test_null_alert_is_unknown(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+) -> None:
+    """A null alert value from the cloud is unknown, not a reassuring off."""
+    data = load_json("update_properties_asleep.json")
+    data["response"]["LOW_OX_ALRT"]["value"] = None
+    mock_owlet_api["get_properties"].side_effect = lambda *_: data
+
+    await setup_integration(hass, mock_config_entry)
+
+    assert _state(hass, "low_oxygen_alert") == STATE_UNKNOWN
+    assert _state(hass, "high_oxygen_alert") == STATE_OFF
 
 
 @pytest.mark.parametrize("properties_fixture", ["update_properties_awake.json"])

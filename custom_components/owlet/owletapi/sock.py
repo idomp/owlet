@@ -2,12 +2,99 @@ import datetime
 import json
 import logging
 from logging import Logger
+import math
 from typing import Any, NotRequired, TypedDict
 
 from .api import OwletAPI, SockData, TokenDict
-from .const import PROPERTIES, VITALS_2, VITALS_3, Properties, PropertyKey
+from .const import PROPERTIES, VALID_RANGES, VITALS_2, VITALS_3, Properties, PropertyKey
 
 logger: Logger = logging.getLogger(__package__)
+
+TRUE_STRINGS = frozenset({"1", "true", "on", "yes"})
+FALSE_STRINGS = frozenset({"0", "false", "off", "no"})
+
+
+def decode_bool(value: Any) -> bool | None:
+    """Decode an Ayla boolean, which arrives as 0/1, true/false or a string.
+
+    Anything else, including None, is unknown rather than False.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float) and math.isfinite(value):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in TRUE_STRINGS:
+            return True
+        if lowered in FALSE_STRINGS:
+            return False
+    return None
+
+
+def decode_float(value: Any) -> float | None:
+    """Decode a number, accepting numeric strings, rejecting everything else."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value) if math.isfinite(value) else None
+    if isinstance(value, str):
+        try:
+            return decode_float(float(value.strip()))
+        except ValueError:
+            return None
+    return None
+
+
+def decode_int(value: Any) -> int | None:
+    """Decode an integer, accepting whole floats and numeric strings."""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if math.isfinite(value) and value.is_integer() else None
+    if isinstance(value, str):
+        try:
+            return decode_int(float(value.strip()))
+        except ValueError:
+            return None
+    return None
+
+
+def decode_str(value: Any) -> str | None:
+    """Decode a string, anything else is unknown."""
+    return value if isinstance(value, str) else None
+
+
+DECODERS = {bool: decode_bool, float: decode_float, int: decode_int, str: decode_str}
+
+
+def decode(data_type: type, key: PropertyKey, value: Any) -> Any:
+    """Decode a raw value to the given type, turning sentinels into None."""
+    decoded = DECODERS[data_type](value)
+    bounds = VALID_RANGES.get(key)
+    if bounds is None or decoded is None:
+        return decoded
+    low, high = bounds
+    return decoded if low <= decoded <= high else None
+
+
+def parse_timestamp(value: Any) -> datetime.datetime | None:
+    """Parse an Ayla timestamp (ISO 8601, usually ...Z) to aware UTC.
+
+    Naive or unreadable timestamps are None: without a time zone the age of a
+    reading cannot be established.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(datetime.UTC)
 
 
 class PropertiesDict(TypedDict):
@@ -86,7 +173,8 @@ class Sock:
         self._device_type: str = data.get("device_type", "Wifi")
         self._manuf_model: str = data.get("manuf_model", "Unknown")
         self._version: int | None = None
-        self._revision = None
+        self._revision: int | None = None
+        self._vitals_unreadable = False
 
         self._raw_properties: dict[str, dict[str, Any]] = {}
         self._properties: Properties = {}
@@ -161,20 +249,18 @@ class Sock:
         keys = ["REAL_TIME_VITALS"]
         if "REAL_TIME_VITALS" not in self._raw_properties:
             keys = [key for vitals in VITALS_2.values() for key in vitals.values()]
-        timestamps = []
-        for key in keys:
-            value = self._raw_properties.get(key, {}).get("data_updated_at")
-            if not isinstance(value, str):
-                continue
-            try:
-                timestamps.append(
-                    datetime.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
-                        tzinfo=datetime.UTC
-                    )
-                )
-            except ValueError:
-                continue
+        timestamps = [
+            parsed
+            for key in keys
+            if (parsed := self.property_updated_at(key)) is not None
+        ]
         return max(timestamps) if timestamps else None
+
+    def property_updated_at(self, raw_key: str) -> datetime.datetime | None:
+        """Return the sanitised data_updated_at of a raw property, in UTC."""
+        return parse_timestamp(
+            self._raw_properties.get(raw_key, {}).get("data_updated_at")
+        )
 
     def get_property(self, property: PropertyKey) -> bool | str | float | int | None:
         """Returns the specific property based on the property argument passed in.
@@ -190,14 +276,40 @@ class Sock:
         """
         return self._properties[property]
 
+    def _raw_value(self, raw_key: str) -> Any:
+        prop = self._raw_properties.get(raw_key)
+        return prop.get("value") if isinstance(prop, dict) else None
+
+    def _decode_vitals(self) -> dict[str, Any] | None:
+        """Decode the REAL_TIME_VITALS JSON document, None when unreadable."""
+        raw = self._raw_value("REAL_TIME_VITALS")
+        vitals: Any = None
+        if isinstance(raw, str):
+            try:
+                vitals = json.loads(raw)
+            except ValueError:
+                vitals = None
+        if not isinstance(vitals, dict):
+            if not self._vitals_unreadable:
+                logger.warning(
+                    "Sock %s sent unreadable vitals, showing them as unknown: %r",
+                    self._serial,
+                    raw,
+                )
+            self._vitals_unreadable = True
+            return None
+        self._vitals_unreadable = False
+        return vitals
+
     async def _normalise_properties(
         self,
     ) -> Properties:
         """Takes the raw properties dictionary returned from the API and formats it into another dict that is more stripped down and easier to work with.
 
-        Parameters
-        ----------
-            raw_properties (dict[str:dict]):The raw properties returned from the API call
+        A key is present when the sock reports the property. Its value is None
+        when the cloud sent nothing usable for it (null, wrong type, or a
+        sentinel such as a heart rate of 0), never a made-up value. One bad
+        field never breaks the rest of the update.
 
         Returns
         -------
@@ -207,54 +319,32 @@ class Sock:
         properties: Properties = {}
 
         for data_type, properties_tmp in PROPERTIES.items():
-            for key, property in properties_tmp.items():
-                try:
-                    properties[key] = data_type(
-                        self._raw_properties[property]["value"],
-                    )
-                except KeyError:
-                    pass
+            for key, raw_key in properties_tmp.items():
+                if raw_key in self._raw_properties:
+                    properties[key] = decode(data_type, key, self._raw_value(raw_key))
 
         if self._version == 3:
-            vitals = json.loads(
-                self._raw_properties["REAL_TIME_VITALS"]["value"],
-            )
-
+            vitals = self._decode_vitals()
             for data_type, vitals_list in VITALS_3.items():
                 for vital_desc, vital_key in vitals_list.items():
-                    match vital_desc:
-                        case "base_station_on":
-                            try:
-                                properties[vital_desc] = vitals["bso"]
-                            except KeyError:
-                                pass
-                        case _:
-                            try:
-                                properties[vital_desc] = data_type(
-                                    vitals[vital_key],
-                                )
-                            except KeyError:
-                                pass
+                    if vitals is None:
+                        properties[vital_desc] = None
+                    elif vital_key in vitals:
+                        properties[vital_desc] = decode(
+                            data_type, vital_desc, vitals[vital_key]
+                        )
 
-            try:
-                properties["last_updated"] = datetime.datetime.strptime(
-                    self._raw_properties["REAL_TIME_VITALS"]["data_updated_at"],
-                    "%Y-%m-%dT%H:%M:%SZ",
-                ).strftime("%Y/%m/%d %H:%M:%S")
-            except (KeyError, TypeError, ValueError):
-                # A missing or unreadable timestamp is handled by the caller's
-                # freshness check, it must not break the whole update.
-                pass
+            updated = self.property_updated_at("REAL_TIME_VITALS")
+            if updated is not None:
+                properties["last_updated"] = updated.strftime("%Y/%m/%d %H:%M:%S")
 
         if self._version == 2:
             for data_type, vitals_list in VITALS_2.items():
                 for vital_desc, vital_key in vitals_list.items():
-                    try:
-                        properties[vital_desc] = data_type(
-                            self._raw_properties[vital_key]["value"],
+                    if vital_key in self._raw_properties:
+                        properties[vital_desc] = decode(
+                            data_type, vital_desc, self._raw_value(vital_key)
                         )
-                    except KeyError:
-                        pass
 
         return properties
 
@@ -267,10 +357,16 @@ class Sock:
         self._version = version
 
     async def _check_revision(self) -> None:
-        revision_json = json.loads(
-            self._raw_properties["oem_sock_version"]["value"],
-        )
-        self._revision = revision_json["rev"]
+        """Read the hardware revision from oem_sock_version, None when unreadable."""
+        raw = self._raw_value("oem_sock_version")
+        data: Any = None
+        if isinstance(raw, str):
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                data = None
+        revision = data.get("rev") if isinstance(data, dict) else None
+        self._revision = revision if isinstance(revision, int) else None
 
     async def update_properties(
         self,
@@ -286,7 +382,9 @@ class Sock:
         """
         properties = await self._api.get_properties(self.serial)
         self._raw_properties = properties["response"]
-        if self._version is None:
+        # Keep detecting until the sock identified itself, a first snapshot
+        # without the telltale properties must not pin the version forever.
+        if not self._version:
             await self._check_version()
         if self._revision is None and self._version == 3:
             await self._check_revision()

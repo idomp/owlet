@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from .conftest import FRESH_TIME
+from .conftest import FRESH_TIME, load_json
 from .helpers import entity_id, setup_integration, state
 
 pytestmark = pytest.mark.freeze_time(FRESH_TIME)
@@ -39,6 +40,10 @@ async def test_sensors_asleep(
     assert _state(hass, "skin_temperature") == "34"
     assert _state(hass, "sleep_state") == "light_sleep"
     assert _state(hass, "last_updated") == "2023-05-24T14:15:50+00:00"
+    assert _state(hass, "alerts_mask") == "0"
+    assert _state(hass, "base_monitoring_status") == "1"
+    assert _state(hass, "battery_status") == "3"
+    assert _state(hass, "last_red_alert") == "2022-11-28T07:46:24+00:00"
 
     # Unique ids must stay stable so the fork is a drop-in replacement.
     entry = entity_registry.async_get(entity_id(hass, "sensor", "heart_rate"))
@@ -75,6 +80,26 @@ async def test_sensors_charging(
     assert _state(hass, "heart_rate") == STATE_UNAVAILABLE
     assert _state(hass, "oxygen_saturation") == STATE_UNAVAILABLE
     assert _state(hass, "oxygen_10_av") == STATE_UNAVAILABLE
+
+
+async def test_sentinel_readings_are_unknown_not_zero(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+) -> None:
+    """A heart rate of 0 means no measurement: unknown, never recorded as 0."""
+    data = load_json("update_properties_asleep.json")
+    vitals = json.loads(data["response"]["REAL_TIME_VITALS"]["value"])
+    vitals.update(hr=0, ox=0, oxta=255)
+    data["response"]["REAL_TIME_VITALS"]["value"] = json.dumps(vitals)
+    mock_owlet_api["get_properties"].side_effect = lambda *_: data
+
+    await setup_integration(hass, mock_config_entry)
+
+    assert _state(hass, "heart_rate") == STATE_UNKNOWN
+    assert _state(hass, "oxygen_saturation") == STATE_UNKNOWN
+    assert _state(hass, "oxygen_10_av") == STATE_UNAVAILABLE
+    assert _state(hass, "battery_percentage") == "50.0"
 
 
 @pytest.mark.freeze_time("2023-11-20T14:06:00+00:00")

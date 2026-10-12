@@ -108,6 +108,24 @@
       },
       "base_station_on": {
         "name": "Basisstation aan"
+      },
+      "discomfort_alrt": {
+        "name": "Ongemak waarschuwing"
+      },
+      "low_integ_read": {
+        "name": "Onbetrouwbare meting"
+      },
+      "preview_high_alarm": {
+        "name": "Vooralarm hoge prioriteit"
+      },
+      "preview_med_alarm": {
+        "name": "Vooralarm gemiddelde prioriteit"
+      },
+      "preview_low_alarm": {
+        "name": "Vooralarm lage prioriteit"
+      },
+      "preview_drm_alarm": {
+        "name": "Vooralarm DRM prioriteit"
       }
     },
     "sensor": {
@@ -149,6 +167,18 @@
       },
       "last_updated": {
         "name": "Laatste meting"
+      },
+      "last_red_alert": {
+        "name": "Laatste rode waarschuwing"
+      },
+      "alerts_mask": {
+        "name": "Waarschuwingsmasker"
+      },
+      "base_mon_status": {
+        "name": "Bewakingsstatus basisstation"
+      },
+      "battery_status": {
+        "name": "Batterijstatus"
       }
     }
   },

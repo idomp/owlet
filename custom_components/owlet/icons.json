@@ -12,6 +12,24 @@
         "state": {
           "off": "mdi:router-wireless-off"
         }
+      },
+      "discomfort_alrt": {
+        "default": "mdi:emoticon-cry-outline"
+      },
+      "low_integ_read": {
+        "default": "mdi:chart-bell-curve-cumulative"
+      },
+      "preview_high_alarm": {
+        "default": "mdi:bell-ring-outline"
+      },
+      "preview_med_alarm": {
+        "default": "mdi:bell-ring-outline"
+      },
+      "preview_low_alarm": {
+        "default": "mdi:bell-ring-outline"
+      },
+      "preview_drm_alarm": {
+        "default": "mdi:bell-ring-outline"
       }
     },
     "sensor": {
@@ -35,6 +53,18 @@
       },
       "last_updated": {
         "default": "mdi:clock-check-outline"
+      },
+      "last_red_alert": {
+        "default": "mdi:alert-octagon-outline"
+      },
+      "alerts_mask": {
+        "default": "mdi:alert-decagram-outline"
+      },
+      "base_mon_status": {
+        "default": "mdi:monitor-eye"
+      },
+      "battery_status": {
+        "default": "mdi:battery-heart-variant"
       }
     }
   }

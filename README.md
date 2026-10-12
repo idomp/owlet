@@ -51,8 +51,10 @@ Per sock:
 
 | Type | Entities |
 | --- | --- |
-| Sensor | Heart rate, O2 saturation, O2 saturation 10 minute average, skin temperature, sleep state, battery percentage, battery remaining, signal strength, last reading, movement and movement bucket (disabled by default) |
-| Binary sensor | Charging, base station on, awake, sock off, high/low heart rate alert, high/low/critical oxygen alert, low/critical battery alert, lost power alert, sock disconnected alert, data stale |
+| Sensor | Heart rate, O2 saturation, O2 saturation 10 minute average, skin temperature, sleep state, battery percentage, battery remaining, signal strength, last reading, movement and movement bucket (disabled by default); diagnostic: alerts mask, base monitoring status, battery status, last red alert |
+| Binary sensor | Charging, base station on, awake, sock off, high/low heart rate alert, high/low/critical oxygen alert, low/critical battery alert, lost power alert, sock disconnected alert, discomfort alert, preview high/medium/low/DRM priority alarm, data stale; diagnostic: low integrity reading |
+
+A reading of 0 for heart rate, oxygen or skin temperature (and 255 for the ten minute oxygen average) means the sock is not measuring; those show as unknown and are never recorded as values. An alert the cloud reports as null is unknown, not off.
 
 Which entities appear depends on what your sock reports. Vitals are unavailable while the sock is charging.
 

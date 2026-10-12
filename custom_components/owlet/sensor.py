@@ -99,7 +99,29 @@ SENSORS: tuple[OwletSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         available_during_charging=False,
     ),
+    # Raw status codes from the device, useful when checking what the sock
+    # reports during an alert. Their meaning is not documented by Owlet.
+    OwletSensorEntityDescription(
+        key="alerts_mask",
+        translation_key="alerts_mask",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        available_during_charging=True,
+    ),
+    OwletSensorEntityDescription(
+        key="base_monitoring_status",
+        translation_key="base_mon_status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        available_during_charging=True,
+    ),
+    OwletSensorEntityDescription(
+        key="battery_status",
+        translation_key="battery_status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        available_during_charging=True,
+    ),
 )
+
+RED_ALERT_SUMMARY = "RED_ALERT_SUMMARY"
 
 
 async def async_setup_entry(
@@ -122,6 +144,8 @@ async def async_setup_entry(
         if OwletOxygenAverageSensor.entity_description.key in properties:
             sensors.append(OwletOxygenAverageSensor(coordinator))
         sensors.append(OwletLastUpdatedSensor(coordinator))
+        if RED_ALERT_SUMMARY in (coordinator.sock.raw_properties or {}):
+            sensors.append(OwletLastRedAlertSensor(coordinator))
 
     async_add_entities(sensors)
 
@@ -228,3 +252,28 @@ class OwletLastUpdatedSensor(OwletBaseEntity, SensorEntity):
     def native_value(self) -> datetime | None:
         """Return the timestamp of the latest reading."""
         return self.coordinator.last_updated
+
+
+class OwletLastRedAlertSensor(OwletBaseEntity, SensorEntity):
+    """When the sock last recorded a red alert.
+
+    The RED_ALERT_SUMMARY property holds an opaque summary of red alerts; the
+    moment the cloud last received a new one is the useful part.
+    """
+
+    entity_description = SensorEntityDescription(
+        key="last_red_alert",
+        translation_key="last_red_alert",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    )
+
+    def __init__(self, coordinator: OwletCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self.sock.serial}-last_red_alert"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return when the red alert summary was last updated."""
+        return self.coordinator.property_updated_at(RED_ALERT_SUMMARY)
