@@ -20,6 +20,7 @@ from custom_components.owlet.owletapi.exceptions import (
     OwletDevicesError,
     OwletEmailError,
     OwletPasswordError,
+    OwletRateLimitError,
 )
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import (
@@ -83,6 +84,7 @@ CREDENTIAL_CASES = [
     (OwletCredentialsError(), {"base": "invalid_credentials"}),
     (OwletDevicesError(), {"base": "no_devices"}),
     (OwletConnectionError(), {"base": "cannot_connect"}),
+    (OwletRateLimitError(retry_after=60), {"base": "rate_limited"}),
     (TimeoutError(), {"base": "cannot_connect"}),
     (ValueError(), {"base": "unknown"}),
 ]

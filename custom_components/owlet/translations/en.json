@@ -34,6 +34,7 @@
       "invalid_password": "Entered password is incorrect",
       "invalid_credentials": "Entered credentials are incorrect",
       "no_devices": "No supported Owlet sock found on this account",
+      "rate_limited": "Owlet is rate limiting logins at the moment, wait a few minutes and try again",
       "unknown": "Unexpected error"
     },
     "abort": {

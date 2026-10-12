@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 import json
@@ -38,17 +39,26 @@ class _Reply:
     payload: Any = None
     exception: BaseException | None = None
     repeat: bool = False
+    headers: dict[str, str] = field(default_factory=dict)
+    json_exception: BaseException | None = None
 
 
 class _Response:
     def __init__(self, reply: _Reply) -> None:
         self.status = reply.status
+        self.headers = reply.headers
         self._payload = reply.payload
+        self._json_exception = reply.json_exception
 
     async def json(self, **_: Any) -> Any:
+        if self._json_exception is not None:
+            raise self._json_exception
         return self._payload
 
     async def __aenter__(self) -> _Response:
+        # Yield to the event loop like a real request would, so two
+        # concurrent callers really interleave and refresh races can show up.
+        await asyncio.sleep(0)
         return self
 
     async def __aexit__(self, *_: Any) -> None:

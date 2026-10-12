@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
@@ -17,6 +17,7 @@ from custom_components.owlet.const import CONF_STALE_THRESHOLD, DOMAIN
 from custom_components.owlet.owletapi.exceptions import (
     OwletAuthenticationError,
     OwletConnectionError,
+    OwletRateLimitError,
 )
 from homeassistant.config_entries import SOURCE_REAUTH
 from homeassistant.const import (
@@ -98,6 +99,81 @@ async def test_auth_error_during_poll_starts_reauth(
 
     flows = hass.config_entries.flow.async_progress()
     assert [flow["context"]["source"] for flow in flows] == [SOURCE_REAUTH]
+
+
+async def test_rate_limit_backs_off_without_reauth(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A 429 delays the next poll as the cloud asked and never asks for the password."""
+    await setup_integration(hass, mock_config_entry)
+    mock_owlet_api["get_properties"].side_effect = OwletRateLimitError(
+        "slow down", retry_after=120
+    )
+
+    await _tick(hass, freezer, timedelta(seconds=10))
+    polls = mock_owlet_api["get_properties"].call_count
+    assert state(hass, *HEART_RATE).state == STATE_UNAVAILABLE
+    assert hass.config_entries.flow.async_progress() == []
+
+    await _tick(hass, freezer, timedelta(seconds=60))
+    assert mock_owlet_api["get_properties"].call_count == polls
+    await _tick(hass, freezer, timedelta(seconds=70))
+    assert mock_owlet_api["get_properties"].call_count == polls + 1
+
+
+async def test_connection_errors_back_off_exponentially(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Consecutive failures wait longer between polls; a success resets it."""
+    await setup_integration(hass, mock_config_entry)
+    mock_owlet_api["get_properties"].side_effect = OwletConnectionError()
+    calls = mock_owlet_api["get_properties"]
+
+    with patch("custom_components.owlet.coordinator.random.uniform", return_value=1.0):
+        await _tick(hass, freezer, timedelta(seconds=10))  # failure 1, next in 20 s
+        polls = calls.call_count
+        await _tick(hass, freezer, timedelta(seconds=10))
+        assert calls.call_count == polls
+        await _tick(hass, freezer, timedelta(seconds=10))  # failure 2, next in 40 s
+        assert calls.call_count == polls + 1
+        await _tick(hass, freezer, timedelta(seconds=30))
+        assert calls.call_count == polls + 1
+        await _tick(hass, freezer, timedelta(seconds=10))  # failure 3, next in 80 s
+        assert calls.call_count == polls + 2
+
+        calls.side_effect = lambda *_: _with_timestamp(
+            dt_util.utcnow().strftime(TIMESTAMP)
+        )
+        await _tick(hass, freezer, timedelta(seconds=80))  # success
+        assert calls.call_count == polls + 3
+        assert state(hass, *HEART_RATE).state == "97.0"
+        await _tick(hass, freezer, timedelta(seconds=10))  # back to the interval
+        assert calls.call_count == polls + 4
+
+
+async def test_refreshed_tokens_survive_a_failed_poll(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Tokens the client refreshed are stored even when that poll failed."""
+    await setup_integration(hass, mock_config_entry)
+    coordinator = next(iter(mock_config_entry.runtime_data.values()))
+    coordinator.sock.api._update_tokens("fresh_token", 999.0, "fresh_refresh")
+    mock_owlet_api["get_properties"].side_effect = OwletConnectionError()
+
+    await _tick(hass, freezer, timedelta(seconds=10))
+
+    assert mock_config_entry.data["api_token"] == "fresh_token"
+    assert mock_config_entry.data["refresh"] == "fresh_refresh"
+    assert mock_config_entry.data["expiry"] == 999.0
 
 
 async def test_frozen_reading_hides_everything(

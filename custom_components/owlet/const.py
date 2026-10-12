@@ -29,6 +29,10 @@ STALE_ISSUE_AFTER: Final = timedelta(hours=1)
 # differences between the Owlet cloud's clock and the local one are normal.
 MAX_FUTURE_SKEW: Final = timedelta(seconds=60)
 
+# After a failed poll the next one is delayed exponentially (with jitter so
+# many installations do not retry in lock step), up to this long.
+BACKOFF_MAX: Final = timedelta(minutes=5)
+
 MANUFACTURER: Final = "Owlet Baby Care"
 SLEEP_STATES: Final = {0: "unknown", 1: "awake", 8: "light_sleep", 15: "deep_sleep"}
 

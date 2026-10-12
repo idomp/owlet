@@ -34,6 +34,7 @@
       "invalid_password": "Het ingegeven wachtwoord is niet correct",
       "invalid_credentials": "De ingegeven gegevens zijn niet correct",
       "no_devices": "Geen ondersteunde Owlet-sok gevonden op dit account",
+      "rate_limited": "Owlet beperkt het aantal aanmeldingen op dit moment, wacht een paar minuten en probeer het opnieuw",
       "unknown": "Onverwachte fout"
     },
     "abort": {

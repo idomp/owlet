@@ -10,6 +10,7 @@
 * Dutch dashboard in `dashboards/owlet_nl.yaml`: a live view with trend graphs on the heart rate, O2 and skin temperature tiles, sock status and active Owlet alerts, and a trends view with the last 12 hours, sleep, daily statistics and battery.
 * Screenshots of the dashboard and step-by-step installation instructions in the README.
 ### Fix
+* Rate limits and server errors are never mistaken for a bad login. A 429 or 5xx from the Owlet cloud or the login services (including Firebase's "too many attempts") delays the next poll, honouring `Retry-After`, instead of starting a reauthentication; consecutive failures back off exponentially with jitter up to five minutes. Only one token refresh runs at a time, so two socks polling together cannot invalidate each other's token. Refreshed tokens are stored even when the poll that refreshed them failed, and unreadable responses are a connection error rather than a crash. Device discovery no longer writes `APP_ACTIVE`.
 * One bad field no longer breaks the whole update: unreadable vitals, a missing or unreadable `oem_sock_version`, null or oddly typed values and unusual timestamp formats are handled per field. Values are decoded by type, a null alert is unknown instead of off, and sentinel readings (heart rate, oxygen or skin temperature of 0, ten minute average of 255) are unknown instead of being recorded as measurements. A sock whose first snapshot lacked the identifying properties is detected on a later poll instead of staying unidentified.
 
 ## 2026.9.1 (2026-09-24)

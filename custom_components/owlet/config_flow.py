@@ -40,6 +40,7 @@ from .owletapi.exceptions import (
     OwletDevicesError,
     OwletEmailError,
     OwletPasswordError,
+    OwletRateLimitError,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -86,6 +87,8 @@ async def _async_login(
         errors["base"] = "no_devices"
     except OWLET_CREDENTIAL_ERRORS as err:
         errors.update(_credential_error(err))
+    except OwletRateLimitError:
+        errors["base"] = "rate_limited"
     except (OwletConnectionError, ClientError, TimeoutError):
         errors["base"] = "cannot_connect"
     except Exception:

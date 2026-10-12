@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 import time
 
 import aiohttp
 import pytest
 
-from custom_components.owlet.owletapi.api import OwletAPI
+from custom_components.owlet.owletapi.api import OwletAPI, parse_retry_after
 from custom_components.owlet.owletapi.const import REGION_INFO
 from custom_components.owlet.owletapi.exceptions import (
     OwletAuthenticationError,
@@ -16,6 +19,7 @@ from custom_components.owlet.owletapi.exceptions import (
     OwletDevicesError,
     OwletEmailError,
     OwletPasswordError,
+    OwletRateLimitError,
     OwletReadOnlyError,
 )
 
@@ -27,6 +31,11 @@ VERIFY_URL = (
     "https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword"
     f"?key={REGION_INFO[REGION]['apiKey']}"
 )
+REFRESH_URL = (
+    f"https://securetoken.googleapis.com/v1/token?key={REGION_INFO[REGION]['apiKey']}"
+)
+MINI_URL = REGION_INFO[REGION]["url_mini"]
+SIGNIN_URL = REGION_INFO[REGION]["url_signin"]
 
 
 def _count(mock_api: FakeSession, method: str, url: str) -> int:
@@ -59,7 +68,7 @@ async def test_login_with_password(mock_api: FakeSession, session: FakeSession) 
         ("EMAIL_NOT_FOUND", OwletEmailError),
         ("INVALID_EMAIL", OwletEmailError),
         ("INVALID_LOGIN_CREDENTIALS", OwletCredentialsError),
-        ("TOO_MANY_ATTEMPTS_TRY_LATER : Too many attempts", OwletAuthenticationError),
+        ("TOO_MANY_ATTEMPTS_TRY_LATER : Too many attempts", OwletRateLimitError),
         ("MISSING_PASSWORD", OwletAuthenticationError),
     ],
 )
@@ -309,3 +318,193 @@ async def test_activate_writes_app_active(
     assert _count(mock_api, "POST", ACTIVATE_URL) == 1
     body = mock_api.requests[("POST", ACTIVATE_URL)][0].kwargs["json"]
     assert body == {"datapoint": {"metadata": {}, "value": 1}}
+
+
+async def test_discovery_does_not_activate(
+    mock_api: FakeSession, authed_api: OwletAPI
+) -> None:
+    """Listing devices must not tell the base station a client is watching."""
+    mock_api.get(f"{BASE}/devices.json", payload=[{"device": {"dsn": DSN}}])
+    mock_api.get(PROPERTIES_URL, payload=load("properties_v3.json"))
+
+    await authed_api.get_devices([3])
+
+    assert _count(mock_api, "POST", ACTIVATE_URL) == 0
+
+
+async def test_rate_limit_raises_with_retry_after(
+    mock_api: FakeSession, authed_api: OwletAPI
+) -> None:
+    """A 429 is a rate limit carrying the cloud's Retry-After, not a re-login."""
+    mock_api.post(ACTIVATE_URL, status=429, headers={"Retry-After": "120"})
+
+    with pytest.raises(OwletRateLimitError) as excinfo:
+        await authed_api.get_properties(DSN)
+
+    assert excinfo.value.retry_after == 120
+    assert len(mock_api.requests) == 1
+
+
+async def test_rate_limit_retry_after_http_date(
+    mock_api: FakeSession, authed_api: OwletAPI
+) -> None:
+    when = format_datetime(datetime.now(UTC) + timedelta(seconds=90), usegmt=True)
+    mock_api.post(ACTIVATE_URL, status=429, headers={"Retry-After": when})
+
+    with pytest.raises(OwletRateLimitError) as excinfo:
+        await authed_api.get_properties(DSN)
+
+    assert 80 <= excinfo.value.retry_after <= 90
+
+
+async def test_rate_limit_without_header(
+    mock_api: FakeSession, authed_api: OwletAPI
+) -> None:
+    mock_api.post(ACTIVATE_URL, status=429)
+
+    with pytest.raises(OwletRateLimitError) as excinfo:
+        await authed_api.get_properties(DSN)
+
+    assert excinfo.value.retry_after is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("30", 30.0), ("garbage", None), ("-5", 5.0), ("999999", 3600.0), (None, None)],
+)
+def test_parse_retry_after_is_clamped(
+    value: str | None, expected: float | None
+) -> None:
+    assert parse_retry_after(value) == expected
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503])
+async def test_login_service_trouble_is_transient(
+    mock_api: FakeSession, session: FakeSession, status: int
+) -> None:
+    """5xx or 429 from the login service is retried later, never a bad password."""
+    mock_api.post(VERIFY_URL, status=status, payload="<html>")
+    api = OwletAPI(REGION, "user@example.com", "secret", session=session)
+
+    with pytest.raises(OwletConnectionError) as excinfo:
+        await api.authenticate()
+
+    assert isinstance(excinfo.value, OwletRateLimitError) is (status == 429)
+    assert not isinstance(excinfo.value, OwletAuthenticationError)
+
+
+@pytest.mark.parametrize("status", [429, 500, 503])
+async def test_refresh_service_trouble_is_transient(
+    mock_api: FakeSession, session: FakeSession, status: int
+) -> None:
+    api = OwletAPI(
+        REGION, token="old", expiry=time.time() - 10, refresh="r", session=session
+    )
+    mock_api.post(REFRESH_URL, status=status)
+
+    with pytest.raises(OwletConnectionError) as excinfo:
+        await api.authenticate()
+
+    assert not isinstance(excinfo.value, OwletAuthenticationError)
+
+
+@pytest.mark.parametrize("status", [429, 500, 503])
+async def test_mini_token_service_trouble_is_transient(
+    mock_api: FakeSession, session: FakeSession, status: int
+) -> None:
+    api = OwletAPI(
+        REGION, token="old", expiry=time.time() - 10, refresh="r", session=session
+    )
+    mock_api.post(
+        REFRESH_URL, payload={"refresh_token": "new_refresh", "id_token": "id_token"}
+    )
+    mock_api.get(MINI_URL, status=status)
+
+    with pytest.raises(OwletConnectionError) as excinfo:
+        await api.authenticate()
+
+    assert not isinstance(excinfo.value, OwletAuthenticationError)
+
+
+@pytest.mark.parametrize("status", [429, 500, 503])
+async def test_sign_in_service_trouble_is_transient(
+    mock_api: FakeSession, session: FakeSession, status: int
+) -> None:
+    api = OwletAPI(
+        REGION, token="old", expiry=time.time() - 10, refresh="r", session=session
+    )
+    mock_api.post(
+        REFRESH_URL, payload={"refresh_token": "new_refresh", "id_token": "id_token"}
+    )
+    mock_api.get(MINI_URL, payload={"mini_token": "mini"})
+    mock_api.post(SIGNIN_URL, status=status)
+
+    with pytest.raises(OwletConnectionError) as excinfo:
+        await api.authenticate()
+
+    assert not isinstance(excinfo.value, OwletAuthenticationError)
+
+
+async def test_too_many_attempts_is_a_lockout_not_a_wrong_password(
+    mock_api: FakeSession, session: FakeSession
+) -> None:
+    mock_api.post(
+        VERIFY_URL,
+        status=400,
+        payload={"error": {"message": "TOO_MANY_ATTEMPTS_TRY_LATER : Too many"}},
+    )
+    api = OwletAPI(REGION, "user@example.com", "secret", session=session)
+
+    with pytest.raises(OwletRateLimitError) as excinfo:
+        await api.authenticate()
+
+    assert excinfo.value.retry_after == 900
+
+
+async def test_unreadable_body_is_connection_error(
+    mock_api: FakeSession, authed_api: OwletAPI
+) -> None:
+    mock_api.post(ACTIVATE_URL, payload={})
+    mock_api.get(PROPERTIES_URL, json_exception=ValueError("not json"))
+
+    with pytest.raises(OwletConnectionError):
+        await authed_api.get_properties(DSN)
+
+
+async def test_incomplete_sign_in_response_is_transient(
+    mock_api: FakeSession, session: FakeSession
+) -> None:
+    api = OwletAPI(
+        REGION, token="old", expiry=time.time() - 10, refresh="r", session=session
+    )
+    mock_api.post(
+        REFRESH_URL, payload={"refresh_token": "new_refresh", "id_token": "id_token"}
+    )
+    mock_api.get(MINI_URL, payload={"mini_token": "mini"})
+    mock_api.post(SIGNIN_URL, payload={"unexpected": True})
+
+    with pytest.raises(OwletConnectionError) as excinfo:
+        await api.authenticate()
+
+    assert not isinstance(excinfo.value, OwletAuthenticationError)
+
+
+async def test_concurrent_polls_refresh_once(
+    mock_api: FakeSession, session: FakeSession
+) -> None:
+    """Two socks polling with an expired token share a single refresh."""
+    api = OwletAPI(
+        REGION, token="old", expiry=time.time() - 10, refresh="r", session=session
+    )
+    mock_refresh(mock_api)
+    other_activate = f"{BASE}/dsns/OTHER/properties/APP_ACTIVE/datapoints.json"
+    other_properties = f"{BASE}/dsns/OTHER/properties.json"
+    for url in (ACTIVATE_URL, other_activate):
+        mock_api.post(url, payload={}, repeat=True)
+    for url in (PROPERTIES_URL, other_properties):
+        mock_api.get(url, payload=load("properties_v3.json"), repeat=True)
+
+    await asyncio.gather(api.get_properties(DSN), api.get_properties("OTHER"))
+
+    assert _count(mock_api, "POST", REFRESH_URL) == 1
+    assert api.tokens["api_token"] == "new_token"

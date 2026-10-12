@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import logging
+import random
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import ClientError
@@ -17,6 +18,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    BACKOFF_MAX,
     CONF_STALE_THRESHOLD,
     DEFAULT_STALE_THRESHOLD,
     DOMAIN,
@@ -28,7 +30,7 @@ from .const import (
     VITAL_PROPERTIES_V2,
     VITALS_PROPERTY_V3,
 )
-from .owletapi.exceptions import OwletConnectionError, OwletError
+from .owletapi.exceptions import OwletConnectionError, OwletError, OwletRateLimitError
 from .owletapi.sock import Sock
 
 if TYPE_CHECKING:
@@ -88,6 +90,8 @@ class OwletCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=interval),
         )
         self.sock = sock
+        self._base_interval = timedelta(seconds=interval)
+        self._failures = 0
         # Whether the sock is supposed to keep sending readings, according to
         # the last fresh reading: False while charging or with the base station
         # off, None until a fresh reading has been seen.
@@ -95,16 +99,35 @@ class OwletCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._expiry_unsub: CALLBACK_TYPE | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch the latest properties from the Owlet cloud."""
+        """Fetch the latest properties from the Owlet cloud.
+
+        Only an invalid login asks the user for the password again. Rate
+        limits and connection or server errors are retried with a growing
+        delay, honouring a Retry-After when the cloud sent one.
+        """
         try:
             response = await self.sock.update_properties()
         except OWLET_CREDENTIAL_ERRORS as err:
             raise ConfigEntryAuthFailed(
                 f"Authentication failed for {self.config_entry.data[CONF_USERNAME]}"
             ) from err
+        except OwletRateLimitError as err:
+            raise UpdateFailed(
+                f"Owlet is rate limiting requests: {err}",
+                retry_after=self._next_retry(err.retry_after),
+            ) from err
         except (OwletConnectionError, OwletError, ClientError, TimeoutError) as err:
-            raise UpdateFailed(f"Error communicating with Owlet: {err}") from err
+            raise UpdateFailed(
+                f"Error communicating with Owlet: {err}",
+                retry_after=self._next_retry(),
+            ) from err
+        finally:
+            # Tokens refreshed during the attempt are kept even when the poll
+            # itself failed, so a restart never needs a login that already
+            # happened.
+            self._persist_tokens()
 
+        self._failures = 0
         if tokens := response.get("tokens"):
             self.hass.config_entries.async_update_entry(
                 self.config_entry, data={**self.config_entry.data, **tokens}
@@ -114,6 +137,30 @@ class OwletCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._schedule_expiry()
         self._async_update_stale_issue()
         return self.sock.properties
+
+    def _next_retry(self, minimum: float | None = None) -> float:
+        """Return how long to wait before the next poll after a failure.
+
+        Exponential backoff from the polling interval with jitter, capped at
+        BACKOFF_MAX, and never shorter than what the cloud asked for.
+        """
+        self._failures += 1
+        delay = min(
+            self._base_interval.total_seconds() * 2**self._failures,
+            BACKOFF_MAX.total_seconds(),
+        )
+        delay *= random.uniform(0.8, 1.2)
+        return max(delay, minimum or 0)
+
+    def _persist_tokens(self) -> None:
+        """Store the client's current tokens in the entry when they changed."""
+        tokens = {key: value for key, value in self.sock.api.tokens.items() if value}
+        if any(
+            self.config_entry.data.get(key) != value for key, value in tokens.items()
+        ):
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data={**self.config_entry.data, **tokens}
+            )
 
     async def async_shutdown(self) -> None:
         """Stop polling and cancel the expiry timer."""
