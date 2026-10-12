@@ -25,6 +25,10 @@ DEFAULT_STALE_THRESHOLD: Final = 5
 # How long data has to stay stale before a repair issue is raised.
 STALE_ISSUE_AFTER: Final = timedelta(hours=1)
 
+# A reading timestamp further than this in the future is rejected. Small
+# differences between the Owlet cloud's clock and the local one are normal.
+MAX_FUTURE_SKEW: Final = timedelta(seconds=60)
+
 MANUFACTURER: Final = "Owlet Baby Care"
 SLEEP_STATES: Final = {0: "unknown", 1: "awake", 8: "light_sleep", 15: "deep_sleep"}
 

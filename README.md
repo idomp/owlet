@@ -60,11 +60,13 @@ There is no switch. This integration never changes anything on the base station:
 
 ### Stale data detection
 
-Users have reported values that stop changing while the Owlet app still shows live data. When the Owlet cloud keeps returning an old reading, a heart rate looks "frozen". The integration compares the timestamp of the latest reading with the current time:
+Users have reported values that stop changing while the Owlet app still shows live data. When the Owlet cloud keeps returning an old reading, a heart rate looks "frozen". The integration judges every reading by the timestamp the cloud attached to it (`REAL_TIME_VITALS` on the Smart Sock 3 and Dream Sock, each vital's own timestamp on the Smart Sock 2):
 
-- **Data stale** (binary sensor) turns on when no new reading arrived within the threshold while the sock is not charging and the base station is on.
-- Vitals become unavailable at the same moment, so a frozen value is never shown as a live one.
-- **Last reading** (sensor) shows when the cloud last received data.
+- A reading is **fresh** when that timestamp is within the stale data threshold. A reading without a timestamp, with an unreadable one, or with one more than a minute in the future is never fresh: when its age cannot be established it is not trusted.
+- Only fresh readings are shown. When the reading goes stale **everything taken from it becomes unavailable**: the vitals, the sleep state, the battery, the charging and base station state and every alert sensor. An alert can never stay "on" because the cloud stopped updating.
+- **Data stale** (binary sensor) turns on when readings are expected but no fresh one arrived. Whether readings are expected (sock not charging, base station on) is taken from the last *fresh* reading only, so an old reading cannot claim "charging" to silence the warning. The sensor's attributes say why (`reading_status`), when the last reading was, how old it is and whether readings were expected.
+- The check also runs when a reading ages out between two polls, so a long polling interval never keeps a frozen value visible.
+- **Last reading** (sensor) shows when the cloud last received data and stays available while the data is stale.
 
 ### Repairs
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -12,6 +13,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import OwletConfigEntry
 from .coordinator import OwletCoordinator
@@ -142,13 +144,14 @@ class OwletBinarySensor(OwletBaseEntity, BinarySensorEntity):
 
     @property
     def available(self) -> bool:
-        """Return if entity is available."""
-        if not super().available:
-            return False
-        if self.entity_description.available_during_charging:
-            return True
-        return (
-            not self.sock.properties.get("charging") and not self.coordinator.is_stale
+        """Return if entity is available.
+
+        Alerts and states from a reading that is not fresh are hidden, so an
+        alert can never stay on because the cloud stopped updating.
+        """
+        return super().available and self.coordinator.reading_available(
+            self.entity_description.key,
+            self.entity_description.available_during_charging,
         )
 
     @property
@@ -175,9 +178,12 @@ class OwletAwakeSensor(OwletBinarySensor):
         super().__init__(coordinator, self.entity_description)
 
     @property
-    def is_on(self) -> bool:
-        """Return true if the baby is not in light or deep sleep."""
-        return self.sock.properties.get(self.entity_description.key) not in (8, 15)
+    def is_on(self) -> bool | None:
+        """Return true when awake, false when asleep, unknown when the sock does not know."""
+        sleep_state = self.sock.properties.get(self.entity_description.key)
+        if sleep_state not in (1, 8, 15):
+            return None
+        return sleep_state == 1
 
 
 class OwletStaleSensor(OwletBaseEntity, BinarySensorEntity):
@@ -197,5 +203,21 @@ class OwletStaleSensor(OwletBaseEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return true when the latest reading is older than the threshold."""
+        """Return true when readings are expected but none fresh arrived."""
         return self.coordinator.is_stale
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Explain the state: why the reading is not trusted and how old it is."""
+        coordinator = self.coordinator
+        last_reading = coordinator.last_updated
+        return {
+            "reading_status": coordinator.stale_reason or "fresh",
+            "last_reading": last_reading.isoformat() if last_reading else None,
+            "age_seconds": (
+                int((dt_util.utcnow() - last_reading).total_seconds())
+                if last_reading
+                else None
+            ),
+            "readings_expected": coordinator.readings_expected,
+        }

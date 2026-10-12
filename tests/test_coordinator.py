@@ -1,8 +1,9 @@
-"""Test the Owlet coordinator."""
+"""Test the Owlet coordinator and its freshness rules."""
 
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 from unittest.mock import AsyncMock
 
 from freezegun.api import FrozenDateTimeFactory
@@ -18,7 +19,13 @@ from custom_components.owlet.owletapi.exceptions import (
     OwletConnectionError,
 )
 from homeassistant.config_entries import SOURCE_REAUTH
-from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE
+from homeassistant.const import (
+    CONF_SCAN_INTERVAL,
+    STATE_OFF,
+    STATE_ON,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.util import dt as dt_util
@@ -30,7 +37,36 @@ pytestmark = pytest.mark.freeze_time(FRESH_TIME)
 
 HEART_RATE = ("sensor", "heart_rate")
 BATTERY = ("sensor", "battery_percentage")
+LAST_UPDATED = ("sensor", "last_updated")
 STALE = ("binary_sensor", "data_stale")
+CHARGING = ("binary_sensor", "charging")
+BASE_STATION = ("binary_sensor", "base_station_on")
+LOW_OXYGEN = ("binary_sensor", "low_oxygen_alert")
+STALE_ISSUE = "stale_data_SERIAL_NUMBER"
+TIMESTAMP = "%Y-%m-%dT%H:%M:%SZ"
+
+
+async def _tick(hass: HomeAssistant, freezer: FrozenDateTimeFactory, delta) -> None:
+    freezer.tick(delta)
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+
+def _with_timestamp(
+    value: Any, name: str = "update_properties_asleep.json"
+) -> dict[str, Any]:
+    """Return a fixture with the vitals timestamp replaced, None removes it."""
+    data = load_json(name)
+    vitals = data["response"]["REAL_TIME_VITALS"]
+    if value is None:
+        del vitals["data_updated_at"]
+    else:
+        vitals["data_updated_at"] = value
+    return data
+
+
+def _serve(mock_owlet_api: dict[str, AsyncMock], data: dict[str, Any]) -> None:
+    mock_owlet_api["get_properties"].side_effect = lambda *_: data
 
 
 async def test_connection_error_marks_unavailable(
@@ -39,14 +75,12 @@ async def test_connection_error_marks_unavailable(
     mock_owlet_api: dict[str, AsyncMock],
     freezer: FrozenDateTimeFactory,
 ) -> None:
-    """Test entities become unavailable when polling fails and recover after."""
+    """Test entities become unavailable when polling fails."""
     await setup_integration(hass, mock_config_entry)
     assert state(hass, *HEART_RATE).state == "97.0"
 
     mock_owlet_api["get_properties"].side_effect = OwletConnectionError()
-    freezer.tick(timedelta(seconds=10))
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await _tick(hass, freezer, timedelta(seconds=10))
     assert state(hass, *HEART_RATE).state == STATE_UNAVAILABLE
 
 
@@ -60,55 +94,225 @@ async def test_auth_error_during_poll_starts_reauth(
     await setup_integration(hass, mock_config_entry)
 
     mock_owlet_api["get_properties"].side_effect = OwletAuthenticationError()
-    freezer.tick(timedelta(seconds=10))
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await _tick(hass, freezer, timedelta(seconds=10))
 
     flows = hass.config_entries.flow.async_progress()
     assert [flow["context"]["source"] for flow in flows] == [SOURCE_REAUTH]
 
 
-async def test_stale_data(
+async def test_frozen_reading_hides_everything(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
     mock_owlet_api: dict[str, AsyncMock],
     freezer: FrozenDateTimeFactory,
 ) -> None:
-    """Test vitals turn unavailable once the cloud stops receiving readings."""
+    """A reading that stops updating hides every value, not just the live vitals."""
     await setup_integration(hass, mock_config_entry)
     assert state(hass, *STALE).state == STATE_OFF
+    assert state(hass, *STALE).attributes["reading_status"] == "fresh"
     assert state(hass, *HEART_RATE).state == "97.0"
-
-    freezer.tick(timedelta(minutes=6))
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-
-    assert state(hass, *STALE).state == STATE_ON
-    assert state(hass, *HEART_RATE).state == STATE_UNAVAILABLE
-    # Battery is still meaningful, it is not a live vital.
     assert state(hass, *BATTERY).state == "50.0"
+
+    await _tick(hass, freezer, timedelta(minutes=6))
+
+    stale = state(hass, *STALE)
+    assert stale.state == STATE_ON
+    assert stale.attributes["reading_status"] == "no_recent_reading"
+    assert stale.attributes["readings_expected"] is True
+    assert stale.attributes["last_reading"] == "2023-05-24T14:15:50+00:00"
+    assert stale.attributes["age_seconds"] == 370
+    for entity in (HEART_RATE, BATTERY, CHARGING, BASE_STATION, LOW_OXYGEN):
+        assert state(hass, *entity).state == STATE_UNAVAILABLE, entity
+    # The diagnostics keep telling when the last reading was.
+    assert state(hass, *LAST_UPDATED).state == "2023-05-24T14:15:50+00:00"
+
+
+@pytest.mark.parametrize("properties_fixture", ["update_properties_awake.json"])
+async def test_alert_cannot_outlive_its_reading(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """An alert from a reading that went stale is unavailable, never a stuck on."""
+    await setup_integration(hass, mock_config_entry)
+    assert state(hass, *LOW_OXYGEN).state == STATE_ON
+
+    await _tick(hass, freezer, timedelta(minutes=6))
+
+    assert state(hass, *LOW_OXYGEN).state == STATE_UNAVAILABLE
 
 
 @pytest.mark.parametrize("properties_fixture", ["update_properties_charging.json"])
-async def test_not_stale_while_charging(
+async def test_old_reading_claiming_charging_is_stale(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
     mock_owlet_api: dict[str, AsyncMock],
     freezer: FrozenDateTimeFactory,
 ) -> None:
-    """Test a charging sock is never reported as stale."""
+    """A two hour old reading that says charging is not believed: it is stale."""
     freezer.tick(timedelta(hours=2))
     await setup_integration(hass, mock_config_entry)
+
+    stale = state(hass, *STALE)
+    assert stale.state == STATE_ON
+    assert stale.attributes["readings_expected"] is None
+    assert state(hass, *CHARGING).state == STATE_UNAVAILABLE
+    assert state(hass, *BATTERY).state == STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize("properties_fixture", ["update_properties_charging.json"])
+async def test_charging_sock_is_not_stale(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """While a fresh reading says charging, missing vitals are normal."""
+    await setup_integration(hass, mock_config_entry)
     assert state(hass, *STALE).state == STATE_OFF
+    assert state(hass, *CHARGING).state == STATE_ON
+    assert state(hass, *BATTERY).state == "100.0"
+    assert state(hass, *HEART_RATE).state == STATE_UNAVAILABLE
+
+    # The cloud stops updating while the sock sits on the charger: not a
+    # problem, but the old battery level is not shown as current either.
+    await _tick(hass, freezer, timedelta(hours=2))
+
+    stale = state(hass, *STALE)
+    assert stale.state == STATE_OFF
+    assert stale.attributes["readings_expected"] is False
+    assert stale.attributes["reading_status"] == "no_recent_reading"
+    assert state(hass, *BATTERY).state == STATE_UNAVAILABLE
+    assert state(hass, *CHARGING).state == STATE_UNAVAILABLE
 
 
-STALE_ISSUE = "stale_data_SERIAL_NUMBER"
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        (None, "no_timestamp"),
+        ("", "invalid_timestamp"),
+        ("None", "invalid_timestamp"),
+        ("yesterday", "invalid_timestamp"),
+        ("2023-05-24 14:15:50", "invalid_timestamp"),
+        (1684937750, "invalid_timestamp"),
+    ],
+)
+async def test_unusable_timestamp_is_stale(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+    value: Any,
+    reason: str,
+) -> None:
+    """Missing, garbage or naive timestamps never pass as fresh."""
+    _serve(mock_owlet_api, _with_timestamp(value))
+    await setup_integration(hass, mock_config_entry)
+
+    stale = state(hass, *STALE)
+    assert stale.state == STATE_ON
+    assert stale.attributes["reading_status"] == reason
+    assert state(hass, *HEART_RATE).state == STATE_UNAVAILABLE
+    assert state(hass, *LOW_OXYGEN).state == STATE_UNAVAILABLE
+    assert state(hass, *LAST_UPDATED).state == STATE_UNKNOWN
 
 
-async def _tick(hass: HomeAssistant, freezer: FrozenDateTimeFactory, delta) -> None:
-    freezer.tick(delta)
-    async_fire_time_changed(hass)
+async def test_future_timestamp_is_stale(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+) -> None:
+    """A reading from the future cannot be aged, so it is not trusted."""
+    future = (dt_util.utcnow() + timedelta(minutes=10)).strftime(TIMESTAMP)
+    _serve(mock_owlet_api, _with_timestamp(future))
+    await setup_integration(hass, mock_config_entry)
+
+    assert state(hass, *STALE).state == STATE_ON
+    assert state(hass, *STALE).attributes["reading_status"] == "future_timestamp"
+    assert state(hass, *HEART_RATE).state == STATE_UNAVAILABLE
+
+
+async def test_small_clock_skew_is_tolerated(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+) -> None:
+    """A reading up to a minute ahead of the local clock is still fresh."""
+    ahead = (dt_util.utcnow() + timedelta(seconds=30)).strftime(TIMESTAMP)
+    _serve(mock_owlet_api, _with_timestamp(ahead))
+    await setup_integration(hass, mock_config_entry)
+
+    assert state(hass, *STALE).state == STATE_OFF
+    assert state(hass, *HEART_RATE).state == "97.0"
+
+
+async def test_reading_expires_without_a_poll(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A frozen reading is hidden when it ages out, even between two polls."""
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        mock_config_entry,
+        options={**mock_config_entry.options, CONF_SCAN_INTERVAL: 3600},
+    )
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
+    polls = mock_owlet_api["get_properties"].call_count
+    assert state(hass, *HEART_RATE).state == "97.0"
+
+    await _tick(hass, freezer, timedelta(minutes=6))
+
+    assert mock_owlet_api["get_properties"].call_count == polls
+    assert state(hass, *HEART_RATE).state == STATE_UNAVAILABLE
+    assert state(hass, *STALE).state == STATE_ON
+
+
+async def test_recovers_when_fresh_reading_arrives(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Everything comes back as soon as the cloud delivers a fresh reading."""
+    await setup_integration(hass, mock_config_entry)
+    await _tick(hass, freezer, timedelta(minutes=6))
+    assert state(hass, *HEART_RATE).state == STATE_UNAVAILABLE
+    assert state(hass, *STALE).state == STATE_ON
+
+    _serve(mock_owlet_api, _with_timestamp(dt_util.utcnow().strftime(TIMESTAMP)))
+    await _tick(hass, freezer, timedelta(seconds=10))
+
+    assert state(hass, *STALE).state == STATE_OFF
+    assert state(hass, *HEART_RATE).state == "97.0"
+    assert state(hass, *BATTERY).state == "50.0"
+    assert state(hass, *LOW_OXYGEN).state == STATE_OFF
+    assert state(hass, *BASE_STATION).state == STATE_ON
+
+
+async def test_disabled_threshold_trusts_everything(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+    freezer: FrozenDateTimeFactory,
+    issue_registry: ir.IssueRegistry,
+) -> None:
+    """With the threshold at 0 the user opted out: old readings stay visible."""
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        mock_config_entry,
+        options={**mock_config_entry.options, CONF_STALE_THRESHOLD: 0},
+    )
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    await _tick(hass, freezer, timedelta(hours=3))
+
+    assert state(hass, *HEART_RATE).state == "97.0"
+    assert state(hass, *STALE).state == STATE_OFF
+    assert issue_registry.async_get_issue(DOMAIN, STALE_ISSUE) is None
 
 
 async def test_repair_issue_for_long_stale_data(
@@ -130,11 +334,7 @@ async def test_repair_issue_for_long_stale_data(
     assert issue.translation_key == "stale_data"
 
     # A fresh reading arrives.
-    fresh = load_json("update_properties_asleep.json")
-    fresh["response"]["REAL_TIME_VITALS"]["data_updated_at"] = (
-        dt_util.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    )
-    mock_owlet_api["get_properties"].side_effect = lambda *_: fresh
+    _serve(mock_owlet_api, _with_timestamp(dt_util.utcnow().strftime(TIMESTAMP)))
     await _tick(hass, freezer, timedelta(seconds=10))
     assert issue_registry.async_get_issue(DOMAIN, STALE_ISSUE) is None
 
@@ -152,23 +352,4 @@ async def test_repair_issue_removed_on_unload(
     assert issue_registry.async_get_issue(DOMAIN, STALE_ISSUE) is not None
 
     assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
-    assert issue_registry.async_get_issue(DOMAIN, STALE_ISSUE) is None
-
-
-async def test_no_repair_issue_when_disabled(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_owlet_api: dict[str, AsyncMock],
-    freezer: FrozenDateTimeFactory,
-    issue_registry: ir.IssueRegistry,
-) -> None:
-    """Test no issue is raised when stale detection is switched off."""
-    mock_config_entry.add_to_hass(hass)
-    hass.config_entries.async_update_entry(
-        mock_config_entry,
-        options={**mock_config_entry.options, CONF_STALE_THRESHOLD: 0},
-    )
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
-    await _tick(hass, freezer, timedelta(hours=3))
     assert issue_registry.async_get_issue(DOMAIN, STALE_ISSUE) is None

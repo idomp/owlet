@@ -143,16 +143,13 @@ class OwletSensor(OwletBaseEntity, SensorEntity):
     def available(self) -> bool:
         """Return if entity is available.
 
-        Vitals are hidden while charging and when the cloud stopped receiving
-        readings, so a frozen value is never shown as a live measurement.
+        Nothing from a reading that is not fresh is shown, so a frozen value
+        is never mistaken for a live one. Vitals are hidden while charging too.
         """
-        if not super().available:
-            return False
-        if self.entity_description.available_during_charging:
-            return True
-        return not self.sock.properties.get(
-            "charging"
-        ) and not self.coordinator.is_reading_stale(self.entity_description.key)
+        return super().available and self.coordinator.reading_available(
+            self.entity_description.key,
+            self.entity_description.available_during_charging,
+        )
 
     @property
     def native_value(self) -> StateType:

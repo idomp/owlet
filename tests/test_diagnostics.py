@@ -38,6 +38,9 @@ async def test_diagnostics(
     assert result["entry"]["data"]["username"] == REDACTED
     sock = result["socks"][0]
     assert sock["is_stale"] is False
+    assert sock["vitals_fresh"] is True
+    assert sock["stale_reason"] is None
+    assert sock["readings_expected"] is True
     assert sock["properties"]["heart_rate"] == 97.0
     assert "SERIAL_NUMBER" not in str(result)
     assert sock["raw_properties"]["REAL_TIME_VITALS"]["device_key"] == REDACTED

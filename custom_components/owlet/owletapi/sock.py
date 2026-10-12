@@ -241,7 +241,9 @@ class Sock:
                     self._raw_properties["REAL_TIME_VITALS"]["data_updated_at"],
                     "%Y-%m-%dT%H:%M:%SZ",
                 ).strftime("%Y/%m/%d %H:%M:%S")
-            except KeyError:
+            except (KeyError, TypeError, ValueError):
+                # A missing or unreadable timestamp is handled by the caller's
+                # freshness check, it must not break the whole update.
                 pass
 
         if self._version == 2:

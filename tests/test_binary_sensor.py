@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.owlet.const import DOMAIN
-from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE
+from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from .conftest import FRESH_TIME
+from .conftest import FRESH_TIME, load_json
 from .helpers import SERIAL, setup_integration, state
 
 pytestmark = pytest.mark.freeze_time(FRESH_TIME)
@@ -76,6 +77,24 @@ async def test_binary_sensors_charging(
     assert _state(hass, "charging") == STATE_ON
     assert _state(hass, "base_station_on") == STATE_OFF
     assert _state(hass, "sleep_state") == STATE_UNAVAILABLE
+
+
+async def test_awake_is_unknown_without_sleep_state(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+) -> None:
+    """Sleep state 0 means the sock does not know, so awake is unknown, not on."""
+    data = load_json("update_properties_asleep.json")
+    vitals = json.loads(data["response"]["REAL_TIME_VITALS"]["value"])
+    vitals["ss"] = 0
+    data["response"]["REAL_TIME_VITALS"]["value"] = json.dumps(vitals)
+    mock_owlet_api["get_properties"].side_effect = lambda *_: data
+
+    await setup_integration(hass, mock_config_entry)
+
+    assert _state(hass, "sleep_state") == STATE_UNKNOWN
+    assert state(hass, "sensor", "sleep_state").state == "unknown"
 
 
 async def test_no_switch_entities(
