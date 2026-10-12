@@ -1,8 +1,10 @@
 # Changelog
 
 <!--next-version-placeholder-->
-## Unreleased
+## 2026.10.0 (2026-10-12)
+First release of [idomp/owlet](https://github.com/idomp/owlet), a fork of [lucasvollebergh/owlet](https://github.com/lucasvollebergh/owlet) 2026.9.1 that is read-only towards the base station and stricter about what it shows. Drop-in replacement: same domain and entity unique ids.
 ### Breaking
+* Requires Home Assistant 2026.10 or newer; the test suite runs against 2026.10.1.
 * The base station switch is gone. The integration only ever writes `APP_ACTIVE` to the Owlet cloud (the "a client is watching" flag that makes the base station upload vitals); it can no longer switch the base station on or off, so an automation, a dashboard tap or a voice assistant can never stop the monitoring. The state is still available as the new **Base station on** binary sensor, with the same unique id, and a leftover switch entity is removed automatically.
 * Freshness rules rewritten. Every value is judged by the cloud's own timestamp on the reading, and a reading without a usable timestamp (missing, unreadable, without time zone or in the future) is never fresh. When the reading is not fresh every entity taken from it is unavailable, including the alerts, the battery and the charging and base station state, where earlier releases kept alerts and battery visible. Whether the sock is charging or the base station is off is only believed from a fresh reading, so an old reading can no longer hide stale data behind "charging". The **Data stale** sensor explains itself through its attributes, entities expire between polls when the reading ages out, and the **Awake** sensor is unknown instead of on when the sock reports no sleep state.
 ### Feature

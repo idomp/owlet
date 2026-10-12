@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v3
+        with:
+          # Same release as requirements_test.txt, so CI and local runs agree.
+          version: "0.17.0"
       - run: ruff format --check .
 
   pytest:
@@ -29,4 +32,5 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements_test.txt
       - name: Run tests
+        # Home Assistant 2026.10.1 via the pinned pytest-homeassistant-custom-component.
         run: pytest --cov --cov-report=term-missing

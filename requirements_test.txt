@@ -1,3 +1,5 @@
-pytest-homeassistant-custom-component
-ruff
-pytest-cov
+# pytest-homeassistant-custom-component 0.13.372 ships Home Assistant 2026.10.1,
+# the release this integration is tested against. Bump both together.
+pytest-homeassistant-custom-component==0.13.372
+ruff==0.17.0
+pytest-cov==7.1.0

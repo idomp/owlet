@@ -23,3 +23,7 @@ combine-as-imports = true
 
 [tool.coverage.run]
 source = ["custom_components.owlet"]
+
+[tool.coverage.report]
+# The fork started at 93 %, it must not drop below that.
+fail_under = 93
