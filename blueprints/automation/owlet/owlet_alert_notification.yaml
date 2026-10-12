@@ -9,7 +9,7 @@ blueprint:
     can be delayed. It is not a replacement for the Owlet base station and the
     Owlet app.
   domain: automation
-  source_url: https://github.com/lucasvollebergh/owlet/blob/main/blueprints/automation/owlet/owlet_alert_notification.yaml
+  source_url: https://github.com/idomp/owlet/blob/main/blueprints/automation/owlet/owlet_alert_notification.yaml
   homeassistant:
     min_version: "2025.12.0"
   input:
@@ -39,8 +39,11 @@ blueprint:
         boolean:
 
 triggers:
+  # Only a real transition counts. An alert that reappears as "on" after
+  # being unavailable (restart, stale data) is not a new alert.
   - trigger: state
     entity_id: !input alert_sensors
+    from: "off"
     to: "on"
 
 variables:

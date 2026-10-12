@@ -213,31 +213,31 @@ views:
             visibility:
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_alarm_kritiek_zuurstofgehalte
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_alarm_laag_zuurstofgehalte
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_alarm_hoog_zuurstofgehalte
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_alarm_hoge_hartslag
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_alarm_lage_hartslag
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_alarm_sok_niet_verbonden
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_alarm_stroomuitval
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_alarm_lage_batterij
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_alarm_kritieke_batterij
-                state_not: "on"
+                state: "off"
 
           # KRITIEK ZUURSTOFGEHALTE (enkel op socks die dit melden)
           - type: tile

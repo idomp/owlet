@@ -5,45 +5,57 @@
 [![License][license-shield]][license]
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/LucasVollebergh/owlet/main/docs/images/dashboard-live.png" alt="Live view with heart rate, oxygen and skin temperature trend graphs" width="30%">
-  <img src="https://raw.githubusercontent.com/LucasVollebergh/owlet/main/docs/images/dashboard-trends.png" alt="Heart rate and oxygen over the last 12 hours" width="30%">
-  <img src="https://raw.githubusercontent.com/LucasVollebergh/owlet/main/docs/images/dashboard-sleep.png" alt="Sleep timeline and skin temperature history" width="30%">
+  <img src="https://raw.githubusercontent.com/idomp/owlet/main/docs/images/dashboard-live.png" alt="Live view with heart rate, oxygen and skin temperature trend graphs" width="30%">
+  <img src="https://raw.githubusercontent.com/idomp/owlet/main/docs/images/dashboard-trends.png" alt="Heart rate and oxygen over the last 12 hours" width="30%">
+  <img src="https://raw.githubusercontent.com/idomp/owlet/main/docs/images/dashboard-sleep.png" alt="Sleep timeline and skin temperature history" width="30%">
 </p>
 
 <p align="center"><em>The included <a href="#dashboard">dashboard</a> (Dutch version). Built-in cards only, no custom cards needed.</em></p>
 
-A Home Assistant custom integration for the Owlet Smart Sock 2, Smart Sock 3 and Dream Sock, using the Owlet cloud.
+A Home Assistant custom integration for the Owlet Smart Sock 2, Smart Sock 3 and Dream Sock, using the Owlet cloud. It is read-only towards the base station: the only thing it ever writes is the `APP_ACTIVE` flag that tells the base station a client is watching.
 
 > [!NOTE]
-> This is the maintained continuation of [ryanbdclark/owlet](https://github.com/ryanbdclark/owlet) by [Ryan Clark (@ryanbdclark)](https://github.com/ryanbdclark), which was archived in July 2026. A big thank you to Ryan for building this integration and the [pyowletapi](https://github.com/ryanbdclark/pyowletapi) library it relies on, and for keeping it running for years. We are happy to take it over and keep maintaining it from here, see [Credits](#credits).
+> This is a fork of [lucasvollebergh/owlet](https://github.com/lucasvollebergh/owlet), the maintained continuation of [ryanbdclark/owlet](https://github.com/ryanbdclark/owlet) by [Ryan Clark](https://github.com/ryanbdclark). It keeps the same domain and entity unique ids, so it is a drop-in replacement, and differs in what it refuses to do and in how strictly it judges the data, see [What is different in this fork](#what-is-different-in-this-fork). See [Credits](#credits).
 
 > [!WARNING]
 > **This is not a medical device.** Data reaches Home Assistant by polling the Owlet cloud, which can be delayed, stop without warning or break when Owlet changes its private API. Never rely on this integration for alarms. Keep the Owlet base station and the official Owlet app as your primary alert.
 
+## What is different in this fork
+
+- **No switch, no control.** The base station switch is gone. The integration can never switch the base station on or off, so no automation, dashboard tap or voice assistant can stop the monitoring. The vendored API client refuses every write except `APP_ACTIVE`. The base station state is a read-only binary sensor.
+- **Nothing stale is ever shown.** Every value is judged by the timestamp the cloud attached to the reading. When the reading is not fresh, everything taken from it is unavailable, including the alerts, the battery and the charging state. A reading without a usable timestamp is never fresh. Whether the sock is charging is only believed from a fresh reading, so an old reading cannot hide stale data behind "charging". See [Stale data detection](#stale-data-detection).
+- **Honest values.** A heart rate, oxygen or skin temperature of 0 and a ten minute average of 255 mean "not measuring" and show as unknown instead of being recorded. A null alert is unknown, not off. Unreadable fields never break the update.
+- **More of what the sock reports.** Discomfort alert, low integrity reading, the preview priority alarms, base monitoring status, battery status and the time of the last red alert.
+- **No needless re-logins.** Rate limits and server errors delay the next poll (honouring `Retry-After`, then backing off) instead of asking for the password again. One token refresh at a time; refreshed tokens are stored even when the poll failed.
+- **Fewer requests.** `APP_ACTIVE` is written once per activation interval (60 s by default) instead of before every poll, after the read, and never during discovery or login.
+- **Accounts per region.** The same email can be set up in both Owlet regions; entries from earlier releases migrate automatically.
+- **Diagnostics by allowlist.** Only known-harmless fields are included, so nothing Owlet adds later can leak identifiers.
+- **Blueprint and dashboards** only react to real transitions: an alert that reappears after being unavailable sends no notification, and "No Owlet alerts active" shows only while every alert is really off.
+
 ## Requirements
 
-- Home Assistant 2025.12 or newer, any installation type (OS, Supervised, Container, Core)
+- Home Assistant 2026.10 or newer (this fork is tested against the release it pins in CI), any installation type (OS, Supervised, Container, Core)
 - [HACS](https://hacs.xyz/)
 - An Owlet account with at least one Smart Sock 2, Smart Sock 3 or Dream Sock
 
 ## Installation
 
 1. In HACS, open the menu (three dots) and choose **Custom repositories**.
-2. Add `https://github.com/lucasvollebergh/owlet` with type **Integration**.
+2. Add `https://github.com/idomp/owlet` with type **Integration**.
 3. Search for **Owlet Smart Sock** in HACS and download it.
 4. Restart Home Assistant.
 5. [![Add Integration][add-integration-badge]][add-integration] or go to **Settings > Devices & services > Add integration** and search for **Owlet Smart Sock**.
-6. Pick your region (Europe for accounts created in the EU or UK, World otherwise) and log in with your Owlet app credentials.
+6. Pick your region (Europe for accounts created in the EU or UK, World otherwise) and log in with your Owlet app credentials. The login lists your socks; an account without a supported sock is refused right there.
 
-## Migrating from ryanbdclark/owlet
+## Migrating from another Owlet integration
 
-The domain (`owlet`) and all unique ids are unchanged, so existing entities, dashboards and automations keep working.
+The domain (`owlet`) and all entity unique ids are unchanged from ryanbdclark/owlet, lucasvollebergh/owlet and jensdufour/owlet, so existing entities, dashboards and automations keep working.
 
 1. In HACS, open the old Owlet repository and choose **Remove** (this does not delete your config entry).
 2. Add this repository as a custom repository and download it, see above.
 3. Restart Home Assistant.
 
-If the options dialog failed to open before (a known issue on Home Assistant 2025.12 and later), it works again after migrating.
+The config entry is migrated automatically (the account identity now includes the region). The base station switch entity is removed on the first start; the state lives on in the **Base station on** binary sensor with the same unique id.
 
 ## Entities
 
@@ -54,9 +66,9 @@ Per sock:
 | Sensor | Heart rate, O2 saturation, O2 saturation 10 minute average, skin temperature, sleep state, battery percentage, battery remaining, signal strength, last reading, movement and movement bucket (disabled by default); diagnostic: alerts mask, base monitoring status, battery status, last red alert |
 | Binary sensor | Charging, base station on, awake, sock off, high/low heart rate alert, high/low/critical oxygen alert, low/critical battery alert, lost power alert, sock disconnected alert, discomfort alert, preview high/medium/low/DRM priority alarm, data stale; diagnostic: low integrity reading |
 
-A reading of 0 for heart rate, oxygen or skin temperature (and 255 for the ten minute oxygen average) means the sock is not measuring; those show as unknown and are never recorded as values. An alert the cloud reports as null is unknown, not off.
-
 Which entities appear depends on what your sock reports. Vitals are unavailable while the sock is charging.
+
+A reading of 0 for heart rate, oxygen or skin temperature (and 255 for the ten minute oxygen average) means the sock is not measuring; those show as unknown and are never recorded as values. An alert the cloud reports as null is unknown, not off.
 
 There is no switch. This integration never changes anything on the base station: the only thing it ever writes to the Owlet cloud is the `APP_ACTIVE` flag that tells the base station a client is watching. The base station state is a read-only binary sensor.
 
@@ -80,8 +92,8 @@ Ready-made automations, import them with one click (requires the Home Assistant 
 
 | Blueprint | What it does | Import |
 | --- | --- | --- |
-| Owlet alert notification | Notification when one of the selected Owlet alerts turns on, optionally as a critical notification that sounds on silent/do not disturb. | [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Flucasvollebergh%2Fowlet%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fowlet%2Fowlet_alert_notification.yaml) |
-| Owlet stale data notification | Notification when the Data stale sensor turns on (after an optional extra delay), and optionally when readings are back. | [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Flucasvollebergh%2Fowlet%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fowlet%2Fowlet_stale_data_notification.yaml) |
+| Owlet alert notification | Notification when one of the selected Owlet alerts goes from off to on, optionally as a critical notification that sounds on silent/do not disturb. | [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fidomp%2Fowlet%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fowlet%2Fowlet_alert_notification.yaml) |
+| Owlet stale data notification | Notification when the Data stale sensor turns on (after an optional extra delay), and optionally when readings are back. | [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fidomp%2Fowlet%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fowlet%2Fowlet_stale_data_notification.yaml) |
 
 These notifications depend on Home Assistant polling the Owlet cloud and can be delayed. They do not replace the Owlet base station and app.
 
@@ -126,12 +138,12 @@ Gauge ranges and trend graphs are for display only and have no medical meaning. 
 | Stale data threshold | 5 min | Minutes without a new reading before the data is treated as stale. Set to 0 to disable. |
 | Activation interval | 60 s | Seconds between two `APP_ACTIVE` writes (10 to 600). This flag tells the base station a client is watching, which makes it upload vitals; it is the only thing the integration ever writes. Lower it if readings stop arriving between writes. |
 
-The integration also supports **Reconfigure** (change region or log in again) and asks you to log in again automatically when the Owlet session expires.
+The integration also supports **Reconfigure** (change region or log in again) and asks you to log in again when the Owlet login really is no longer valid. Rate limits and outages never trigger that: the next poll is simply delayed.
 
 ## Troubleshooting
 
-- **"Invalid handler specified"** when adding the integration: this came from an incompatible external `pyowletapi` version in older releases. The Owlet API client now ships inside the integration, install the latest release of this repository and restart.
-- **Values stop changing**: check the Data stale and Last reading entities. If the Owlet app shows fresh data but Home Assistant does not, download diagnostics (device page > three dots > Download diagnostics) and open an issue. Diagnostics redact tokens, email, serial numbers, MAC addresses and baby details.
+- **Values stop changing**: check the Data stale and Last reading entities and the attributes of Data stale (`reading_status` says why). If the Owlet app shows fresh data but Home Assistant does not, download diagnostics (device page > three dots > Download diagnostics) and open an issue. Diagnostics are built from an allowlist: they contain the region, the options, the normalised values and, for known-harmless raw properties, their value and timestamp. Tokens, email, serial numbers, MAC addresses and baby details are never included.
+- **Readings stop between activations**: lower the activation interval in the options.
 - Enable debug logging:
 
   ```yaml
@@ -146,19 +158,20 @@ The integration also supports **Reconfigure** (change region or log in again) an
 - Owlet has no public API. This integration uses the same private endpoints as the Owlet app, which Owlet can change or block at any time.
 - The Owlet Cam is not supported.
 - Only one Owlet account per Home Assistant config entry, add another entry for a second account.
+- Nothing on the base station can be changed from Home Assistant, by design.
 
 ## Credits
 
 - **Original author:** [Ryan Clark (@ryanbdclark)](https://github.com/ryanbdclark) created this integration in [ryanbdclark/owlet](https://github.com/ryanbdclark/owlet) and the [pyowletapi](https://github.com/ryanbdclark/pyowletapi) library that talks to the Owlet cloud. Everything here builds on that work. Thank you, Ryan.
-- **Contributors to the original repository:** everyone who sent fixes and translations upstream, including [@MarjovanLier](https://github.com/MarjovanLier) (multiple devices), [@Julien80](https://github.com/Julien80) (French translation) and [@coreywillwhat](https://github.com/coreywillwhat) (10 minute oxygen average filtering).
-- **Owlet API client:** the integration ships its own copy of [lucasvollebergh/pyowletapi](https://github.com/lucasvollebergh/pyowletapi) (pyowletapi-ng), the maintained continuation of Ryan's library, in `custom_components/owlet/owletapi`, so Home Assistant does not need to install anything from PyPI.
-- **Maintainer of this fork:** [@lucasvollebergh](https://github.com/lucasvollebergh). Issues and pull requests go to [this repository](https://github.com/lucasvollebergh/owlet/issues).
+- **Maintained continuation:** [Lucas Vollebergh (@lucasvollebergh)](https://github.com/lucasvollebergh) took the integration over in [lucasvollebergh/owlet](https://github.com/lucasvollebergh/owlet), fixed it for current Home Assistant releases, added stale data detection, the blueprints and the dashboards, and maintains [lucasvollebergh/pyowletapi](https://github.com/lucasvollebergh/pyowletapi) (pyowletapi-ng), a copy of which ships in `custom_components/owlet/owletapi`. This fork starts from his work.
+- **Contributors to the original repository:** everyone who sent fixes and translations upstream, including [@MarjovanLier](https://github.com/MarjovanLier) (multiple devices), [@Julien80](https://github.com/Julien80) (French translation) and [@coreywillwhat](https://github.com/coreywillwhat) (10 minute oxygen average filtering). The region-qualified account identity follows [jensdufour/owlet](https://github.com/jensdufour/owlet).
+- **Maintainer of this fork:** [@idomp](https://github.com/idomp). Issues and pull requests go to [this repository](https://github.com/idomp/owlet/issues).
 
 The original license (Apache 2.0) still applies, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ## Contributing
 
-Issues and pull requests are welcome. Run the checks locally with:
+Issues and pull requests are welcome. Run the checks locally (Linux or WSL, Home Assistant does not run natively on Windows) with:
 
 ```bash
 pip install -r requirements_test.txt
@@ -171,8 +184,8 @@ pytest
 [hacs]: https://github.com/hacs/integration
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
 [license]: LICENSE
-[license-shield]: https://img.shields.io/github/license/lucasvollebergh/owlet.svg?style=for-the-badge
-[releases-shield]: https://img.shields.io/github/release/lucasvollebergh/owlet.svg?style=for-the-badge
-[releases]: https://github.com/lucasvollebergh/owlet/releases
+[license-shield]: https://img.shields.io/github/license/idomp/owlet.svg?style=for-the-badge
+[releases-shield]: https://img.shields.io/github/release/idomp/owlet.svg?style=for-the-badge
+[releases]: https://github.com/idomp/owlet/releases
 [add-integration]: https://my.home-assistant.io/redirect/config_flow_start?domain=owlet
 [add-integration-badge]: https://my.home-assistant.io/badges/config_flow_start.svg

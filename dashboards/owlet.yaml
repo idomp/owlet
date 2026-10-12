@@ -77,31 +77,31 @@ views:
             visibility:
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_critical_oxygen_alert
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_low_oxygen_alert
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_high_oxygen_alert
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_high_heart_rate_alert
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_low_heart_rate_alert
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_sock_disconnected_alert
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_lost_power_alert
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_low_battery_alert
-                state_not: "on"
+                state: "off"
               - condition: state
                 entity: binary_sensor.owlet_sock_serial_number_critical_battery_alert
-                state_not: "on"
+                state: "off"
           # Each alert only shows while Owlet reports it as active.
           - type: tile
             entity: binary_sensor.owlet_sock_serial_number_critical_oxygen_alert
