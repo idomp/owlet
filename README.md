@@ -52,10 +52,11 @@ Per sock:
 | Type | Entities |
 | --- | --- |
 | Sensor | Heart rate, O2 saturation, O2 saturation 10 minute average, skin temperature, sleep state, battery percentage, battery remaining, signal strength, last reading, movement and movement bucket (disabled by default) |
-| Binary sensor | Charging, awake, sock off, high/low heart rate alert, high/low/critical oxygen alert, low/critical battery alert, lost power alert, sock disconnected alert, data stale |
-| Switch | Base station on |
+| Binary sensor | Charging, base station on, awake, sock off, high/low heart rate alert, high/low/critical oxygen alert, low/critical battery alert, lost power alert, sock disconnected alert, data stale |
 
 Which entities appear depends on what your sock reports. Vitals are unavailable while the sock is charging.
+
+There is no switch. This integration never changes anything on the base station: the only thing it ever writes to the Owlet cloud is the `APP_ACTIVE` flag that tells the base station a client is watching. The base station state is a read-only binary sensor.
 
 ### Stale data detection
 

@@ -152,6 +152,12 @@ VITALS_2: dict[type, dict[PropertyKey, str]] = {
     },
 }
 
+# The only properties this client is allowed to write. APP_ACTIVE tells the
+# base station that a client is watching, which makes it upload vitals.
+# Nothing else is ever written, so the base station's own behaviour (alarms,
+# on/off) can never be changed from Home Assistant.
+WRITABLE_PROPERTIES: frozenset[str] = frozenset({"APP_ACTIVE"})
+
 REGION_INFO: dict[str, dict[str, str]] = {
     "world": {
         "url_mini": "https://ayla-sso.owletdata.com/mini/",

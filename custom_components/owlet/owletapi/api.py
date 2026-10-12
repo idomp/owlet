@@ -6,7 +6,7 @@ from typing import Any, NotRequired, TypedDict
 
 import aiohttp
 
-from .const import REGION_INFO
+from .const import REGION_INFO, WRITABLE_PROPERTIES
 from .exceptions import (
     OwletAuthenticationError,
     OwletConnectionError,
@@ -15,9 +15,18 @@ from .exceptions import (
     OwletEmailError,
     OwletError,
     OwletPasswordError,
+    OwletReadOnlyError,
 )
 
 logger: Logger = logging.getLogger(__package__)
+
+
+def _is_allowed_write(url: str) -> bool:
+    """Return True when a write targets one of the properties this client may set."""
+    return any(
+        url.endswith(f"/properties/{name}/datapoints.json")
+        for name in WRITABLE_PROPERTIES
+    )
 
 
 class SockData(TypedDict):
@@ -555,22 +564,6 @@ class OwletAPI:
             raise OwletError("Unexpected response type from request.")
         return {item["property"]["name"]: item["property"] for item in api_response}
 
-    async def post_command(
-        self,
-        device: str,
-        command: str,
-        data: dict[str, Any],
-    ) -> Any:
-        """Send a command to the Owlet API and return the response."""
-        await self._maybe_activate(device)
-        response = await self._request(
-            "POST",
-            f"/dsns/{device}/properties/{command}/datapoints.json",
-            data,
-        )
-
-        return response
-
     async def _request(
         self,
         method: str,
@@ -578,6 +571,10 @@ class OwletAPI:
         data: dict[str, Any] | None = None,
     ) -> Any:
         """Send a request to the Owlet API and return the response.
+
+        Anything other than a GET is refused unless it writes one of the
+        WRITABLE_PROPERTIES, so this client can never change what the base
+        station does.
 
         Parameters
         ----------
@@ -590,6 +587,10 @@ class OwletAPI:
         dict: Dictionary containing the response
 
         """
+        if method != "GET" and not _is_allowed_write(url):
+            raise OwletReadOnlyError(
+                f"Refusing {method} {url}: only {sorted(WRITABLE_PROPERTIES)} may be written"
+            )
         await self.authenticate()
         status, body = await self._send(method, url, data)
 

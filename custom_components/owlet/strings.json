@@ -105,6 +105,9 @@
       },
       "data_stale": {
         "name": "Data stale"
+      },
+      "base_station_on": {
+        "name": "Base station on"
       }
     },
     "sensor": {
@@ -147,16 +150,6 @@
       "last_updated": {
         "name": "Last reading"
       }
-    },
-    "switch": {
-      "base_on": {
-        "name": "Base station on"
-      }
-    }
-  },
-  "exceptions": {
-    "command_failed": {
-      "message": "Sending the command to the Owlet cloud failed"
     }
   },
   "issues": {

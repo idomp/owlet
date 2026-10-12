@@ -34,6 +34,14 @@ SENSORS: tuple[OwletBinarySensorEntityDescription, ...] = (
         device_class=BinarySensorDeviceClass.BATTERY_CHARGING,
         available_during_charging=True,
     ),
+    # Read-only: this integration never switches the base station, it only
+    # reports what the sock says about it.
+    OwletBinarySensorEntityDescription(
+        key="base_station_on",
+        translation_key="base_station_on",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        available_during_charging=True,
+    ),
     OwletBinarySensorEntityDescription(
         key="high_heart_rate_alert",
         translation_key="high_hr_alrt",

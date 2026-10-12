@@ -18,6 +18,10 @@ class OwletDevicesError(OwletError):
     """when no devices are found."""
 
 
+class OwletReadOnlyError(OwletError):
+    """When code tries to write a property other than the allowed ones (APP_ACTIVE)."""
+
+
 class OwletEmailError(OwletCredentialsError):
     """When the email address is unknown or invalid.
 

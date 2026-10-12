@@ -6,6 +6,12 @@
         "state": {
           "off": "mdi:sleep"
         }
+      },
+      "base_station_on": {
+        "default": "mdi:router-wireless",
+        "state": {
+          "off": "mdi:router-wireless-off"
+        }
       }
     },
     "sensor": {
@@ -29,11 +35,6 @@
       },
       "last_updated": {
         "default": "mdi:clock-check-outline"
-      }
-    },
-    "switch": {
-      "base_on": {
-        "default": "mdi:router-wireless"
       }
     }
   }

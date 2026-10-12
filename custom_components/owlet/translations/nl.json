@@ -105,6 +105,9 @@
       },
       "data_stale": {
         "name": "Verouderde gegevens"
+      },
+      "base_station_on": {
+        "name": "Basisstation aan"
       }
     },
     "sensor": {
@@ -147,16 +150,6 @@
       "last_updated": {
         "name": "Laatste meting"
       }
-    },
-    "switch": {
-      "base_on": {
-        "name": "Basisstation aan"
-      }
-    }
-  },
-  "exceptions": {
-    "command_failed": {
-      "message": "Het commando naar de Owlet-cloud versturen is mislukt"
     }
   },
   "issues": {

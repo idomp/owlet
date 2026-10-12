@@ -2,6 +2,8 @@
 
 <!--next-version-placeholder-->
 ## Unreleased
+### Breaking
+* The base station switch is gone. The integration only ever writes `APP_ACTIVE` to the Owlet cloud (the "a client is watching" flag that makes the base station upload vitals); it can no longer switch the base station on or off, so an automation, a dashboard tap or a voice assistant can never stop the monitoring. The state is still available as the new **Base station on** binary sensor, with the same unique id, and a leftover switch entity is removed automatically.
 ### Feature
 * Dutch dashboard in `dashboards/owlet_nl.yaml`: a live view with trend graphs on the heart rate, O2 and skin temperature tiles, sock status and active Owlet alerts, and a trends view with the last 12 hours, sleep, daily statistics and battery.
 * Screenshots of the dashboard and step-by-step installation instructions in the README.

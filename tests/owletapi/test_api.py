@@ -16,6 +16,7 @@ from custom_components.owlet.owletapi.exceptions import (
     OwletDevicesError,
     OwletEmailError,
     OwletPasswordError,
+    OwletReadOnlyError,
 )
 
 from .conftest import BASE, DSN, REGION, FakeSession, load, mock_login, mock_refresh
@@ -278,3 +279,33 @@ async def test_validate_authentication_returns_tokens_refreshed_before_check(
 
     assert tokens is not None
     assert tokens["api_token"] == "new_token"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"/dsns/{DSN}/properties/BASE_STATION_ON_CMD/datapoints.json",
+        f"/dsns/{DSN}/properties/ALRT_PAUSE_CMD/datapoints.json",
+        f"/dsns/{DSN}/properties/SETTINGS_CMD/datapoints.json",
+        f"/dsns/{DSN}/properties/APP_ACTIVE/datapoints.json/../BASE_STATION_ON_CMD",
+    ],
+)
+async def test_only_app_active_can_be_written(
+    mock_api: FakeSession, authed_api: OwletAPI, url: str
+) -> None:
+    """Every write except APP_ACTIVE is refused before anything is sent."""
+    with pytest.raises(OwletReadOnlyError):
+        await authed_api._request("POST", url, {"datapoint": {"value": "{}"}})
+    assert not mock_api.requests
+
+
+async def test_activate_writes_app_active(
+    mock_api: FakeSession, authed_api: OwletAPI
+) -> None:
+    mock_api.post(ACTIVATE_URL, payload={})
+
+    await authed_api.activate(DSN)
+
+    assert _count(mock_api, "POST", ACTIVATE_URL) == 1
+    body = mock_api.requests[("POST", ACTIVATE_URL)][0].kwargs["json"]
+    assert body == {"datapoint": {"metadata": {}, "value": 1}}

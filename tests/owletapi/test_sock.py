@@ -13,7 +13,6 @@ from .conftest import BASE, DSN, FakeSession, load
 
 PROPERTIES_URL = f"{BASE}/dsns/{DSN}/properties.json"
 ACTIVATE_URL = f"{BASE}/dsns/{DSN}/properties/APP_ACTIVE/datapoints.json"
-COMMAND_URL = f"{BASE}/dsns/{DSN}/properties/BASE_STATION_ON_CMD/datapoints.json"
 
 
 @pytest.fixture
@@ -54,15 +53,7 @@ def test_last_updated_without_data(sock: Sock) -> None:
     assert sock.last_updated_at is None
 
 
-async def test_control_base_station(mock_api: FakeSession, sock: Sock) -> None:
-    mock_api.post(ACTIVATE_URL, payload={})
-    mock_api.post(COMMAND_URL, payload={"datapoint": {}})
-
-    assert await sock.control_base_station(False) is True
-    body = next(
-        call.kwargs["json"]
-        for (verb, url), calls in mock_api.requests.items()
-        if str(url) == COMMAND_URL
-        for call in calls
-    )
-    assert '"val": "false"' in body["datapoint"]["value"]
+def test_sock_has_no_control_methods(sock: Sock) -> None:
+    """The sock model is read-only, there is nothing that could change the base station."""
+    assert not hasattr(sock, "control_base_station")
+    assert not hasattr(sock.api, "post_command")
