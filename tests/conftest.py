@@ -47,8 +47,9 @@ def mock_config_entry() -> MockConfigEntry:
     """Return a config entry for a single Owlet account."""
     return MockConfigEntry(
         domain=DOMAIN,
+        version=2,
         title="sample@gmail.com",
-        unique_id="sample@gmail.com",
+        unique_id="europe_sample@gmail.com",
         data={
             CONF_REGION: "europe",
             CONF_USERNAME: "sample@gmail.com",

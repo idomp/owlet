@@ -47,6 +47,37 @@ _LOGGER = logging.getLogger(__name__)
 
 type OwletConfigEntry = ConfigEntry[dict[str, OwletCoordinator]]
 
+# Config entry version 2 identifies an account by region and email.
+ENTRY_VERSION = 2
+
+
+def account_unique_id(region: str, username: str) -> str:
+    """Return the unique id of an Owlet account.
+
+    The region is part of it because the same email can exist as separate
+    accounts in Owlet's Europe and World regions.
+    """
+    return f"{region}_{username.strip().lower()}"
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: OwletConfigEntry) -> bool:
+    """Migrate a config entry from an earlier version."""
+    if entry.version > ENTRY_VERSION:
+        # Written by a newer release, this one cannot know what it means.
+        return False
+    if entry.version == 1:
+        hass.config_entries.async_update_entry(
+            entry,
+            unique_id=account_unique_id(
+                entry.data[CONF_REGION], entry.data[CONF_USERNAME]
+            ),
+            version=ENTRY_VERSION,
+        )
+        _LOGGER.info(
+            "Migrated Owlet entry %s to version %s", entry.title, ENTRY_VERSION
+        )
+    return True
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: OwletConfigEntry) -> bool:
     """Set up Owlet Smart Sock from a config entry."""

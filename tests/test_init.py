@@ -85,6 +85,44 @@ async def test_auth_error_starts_reauth(
     assert flows[0]["context"]["source"] == SOURCE_REAUTH
 
 
+async def test_version_1_entry_is_migrated(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+) -> None:
+    """An entry from before the region was part of the identity is migrated."""
+    old_entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        title="sample@gmail.com",
+        unique_id="sample@gmail.com",
+        data=dict(mock_config_entry.data),
+        options=dict(mock_config_entry.options),
+    )
+    await setup_integration(hass, old_entry)
+
+    assert old_entry.state is ConfigEntryState.LOADED
+    assert old_entry.version == 2
+    assert old_entry.unique_id == "europe_sample@gmail.com"
+
+
+async def test_entry_from_a_newer_release_is_not_loaded(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+) -> None:
+    """A future entry version is left alone instead of being guessed at."""
+    new_entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=3,
+        unique_id="europe_sample@gmail.com",
+        data=dict(mock_config_entry.data),
+    )
+    await setup_integration(hass, new_entry)
+
+    assert new_entry.state is ConfigEntryState.MIGRATION_ERROR
+
+
 async def test_activation_interval_option_reaches_the_client(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,

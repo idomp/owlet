@@ -24,7 +24,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from . import OwletConfigEntry
+from . import ENTRY_VERSION, OwletConfigEntry, account_unique_id
 from .const import (
     CONF_ACTIVATION_INTERVAL,
     CONF_STALE_THRESHOLD,
@@ -37,6 +37,7 @@ from .const import (
     OWLET_CREDENTIAL_ERRORS,
     POLLING_INTERVAL,
     REGIONS,
+    SUPPORTED_VERSIONS,
 )
 from .owletapi.api import OwletAPI
 from .owletapi.exceptions import (
@@ -76,7 +77,12 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 async def _async_login(
     hass: HomeAssistant, region: str, username: str, password: str
 ) -> tuple[dict[str, Any], dict[str, str]]:
-    """Log in to the Owlet cloud and return the tokens and any form errors."""
+    """Log in to the Owlet cloud and return the tokens and any form errors.
+
+    Logging in also lists the account's devices, so a login without a
+    supported sock is reported here instead of failing at setup. Listing
+    only reads; nothing is written to the base station from the flow.
+    """
     owlet_api = OwletAPI(
         region=region,
         user=username,
@@ -86,7 +92,7 @@ async def _async_login(
     errors: dict[str, str] = {}
     try:
         await owlet_api.authenticate()
-        await owlet_api.validate_authentication()
+        await owlet_api.get_devices(SUPPORTED_VERSIONS)
     except OwletDevicesError:
         errors["base"] = "no_devices"
     except OWLET_CREDENTIAL_ERRORS as err:
@@ -117,7 +123,7 @@ def _credential_error(err: Exception) -> dict[str, str]:
 class OwletConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Owlet Smart Sock."""
 
-    VERSION = 1
+    VERSION = ENTRY_VERSION
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -126,7 +132,9 @@ class OwletConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             username = user_input[CONF_USERNAME].strip()
-            await self.async_set_unique_id(username.lower())
+            await self.async_set_unique_id(
+                account_unique_id(user_input[CONF_REGION], username)
+            )
             self._abort_if_unique_id_configured()
 
             tokens, errors = await _async_login(
@@ -196,6 +204,15 @@ class OwletConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            unique_id = account_unique_id(
+                user_input[CONF_REGION], entry.data[CONF_USERNAME]
+            )
+            if any(
+                other.entry_id != entry.entry_id and other.unique_id == unique_id
+                for other in self._async_current_entries()
+            ):
+                return self.async_abort(reason="already_configured")
+
             tokens, errors = await _async_login(
                 self.hass,
                 user_input[CONF_REGION],
@@ -205,6 +222,7 @@ class OwletConfigFlow(ConfigFlow, domain=DOMAIN):
             if not errors:
                 return self.async_update_reload_and_abort(
                     entry,
+                    unique_id=unique_id,
                     data_updates={CONF_REGION: user_input[CONF_REGION], **tokens},
                 )
 

@@ -52,7 +52,9 @@ def mock_login() -> Generator[AsyncMock]:
     ):
         api = api_cls.return_value
         api.authenticate = AsyncMock()
-        api.validate_authentication = AsyncMock()
+        api.get_devices = AsyncMock(
+            return_value={"response": [{"device": {"dsn": "SERIAL_NUMBER"}}]}
+        )
         api.tokens = TOKENS
         yield api
 
@@ -70,7 +72,11 @@ async def test_user_flow(hass: HomeAssistant, mock_login: AsyncMock) -> None:
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Sample@gmail.com"
-    assert result["result"].unique_id == "sample@gmail.com"
+    assert result["result"].unique_id == "europe_sample@gmail.com"
+    assert result["result"].version == 2
+    # Logging in lists the devices (read only), so an account without a
+    # supported sock is caught here.
+    mock_login.get_devices.assert_awaited_once()
     assert result["data"] == {
         CONF_REGION: "europe",
         CONF_USERNAME: "Sample@gmail.com",
@@ -122,6 +128,21 @@ async def test_user_flow_errors(
     assert result["type"] is FlowResultType.CREATE_ENTRY
 
 
+async def test_user_flow_without_supported_sock(
+    hass: HomeAssistant, mock_login: AsyncMock
+) -> None:
+    """An account without a supported sock is refused when adding it."""
+    mock_login.get_devices.side_effect = OwletDevicesError()
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], USER_INPUT
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "no_devices"}
+
+
 async def test_user_flow_already_configured(
     hass: HomeAssistant, mock_login: AsyncMock, mock_config_entry: MockConfigEntry
 ) -> None:
@@ -135,6 +156,21 @@ async def test_user_flow_already_configured(
     )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+async def test_same_email_in_other_region_is_allowed(
+    hass: HomeAssistant, mock_login: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """Owlet accounts are per region, the same email may exist in both."""
+    mock_config_entry.add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**USER_INPUT, CONF_REGION: "world"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["result"].unique_id == "world_sample@gmail.com"
 
 
 async def test_reauth_flow(
@@ -180,6 +216,28 @@ async def test_reconfigure_flow(
     assert result["reason"] == "reconfigure_successful"
     assert mock_config_entry.data[CONF_REGION] == "world"
     assert mock_config_entry.data["refresh"] == "new_refresh"
+    assert mock_config_entry.unique_id == "world_sample@gmail.com"
+
+
+async def test_reconfigure_into_configured_region_aborts(
+    hass: HomeAssistant, mock_login: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """Changing the region to one already set up for this email is refused."""
+    mock_config_entry.add_to_hass(hass)
+    MockConfigEntry(
+        domain=DOMAIN,
+        version=2,
+        unique_id="world_sample@gmail.com",
+        data={**mock_config_entry.data, CONF_REGION: "world"},
+    ).add_to_hass(hass)
+
+    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_REGION: "world", CONF_PASSWORD: "sample"}
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert mock_config_entry.data[CONF_REGION] == "europe"
 
 
 async def test_options_flow(
