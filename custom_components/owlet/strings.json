@@ -49,11 +49,13 @@
         "title": "Configure options for Owlet",
         "data": {
           "scan_interval": "Polling interval (seconds)",
-          "stale_threshold": "Stale data threshold (minutes)"
+          "stale_threshold": "Stale data threshold (minutes)",
+          "activation_interval": "Activation interval (seconds)"
         },
         "data_description": {
           "scan_interval": "Seconds between requests to the Owlet cloud, minimum 5. Every poll costs several API calls per sock, a lower value increases the risk of rate limiting.",
-          "stale_threshold": "When the Owlet cloud has no new reading for this many minutes, vitals become unavailable and the Data stale sensor turns on. Set to 0 to disable."
+          "stale_threshold": "When the Owlet cloud has no new reading for this many minutes, vitals become unavailable and the Data stale sensor turns on. Set to 0 to disable.",
+          "activation_interval": "Seconds between two APP_ACTIVE writes, the signal that tells the base station a client is watching so it keeps uploading vitals. Between 10 and 600. Lower it if readings stop arriving between writes."
         }
       }
     }

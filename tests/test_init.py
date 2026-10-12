@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.owlet.const import DOMAIN
+from custom_components.owlet.const import CONF_ACTIVATION_INTERVAL, DOMAIN
 from custom_components.owlet.owletapi.exceptions import (
     OwletAuthenticationError,
     OwletConnectionError,
@@ -83,6 +83,26 @@ async def test_auth_error_starts_reauth(
     flows = hass.config_entries.flow.async_progress()
     assert len(flows) == 1
     assert flows[0]["context"]["source"] == SOURCE_REAUTH
+
+
+async def test_activation_interval_option_reaches_the_client(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_owlet_api: dict[str, AsyncMock],
+) -> None:
+    """The client activates at the configured cadence, 60 s by default."""
+    await setup_integration(hass, mock_config_entry)
+    coordinator = next(iter(mock_config_entry.runtime_data.values()))
+    assert coordinator.sock.api._activation_interval == 60
+
+    hass.config_entries.async_update_entry(
+        mock_config_entry,
+        options={**mock_config_entry.options, CONF_ACTIVATION_INTERVAL: 120},
+    )
+    await hass.config_entries.async_reload(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = next(iter(mock_config_entry.runtime_data.values()))
+    assert coordinator.sock.api._activation_interval == 120
 
 
 async def test_refreshed_tokens_are_stored(

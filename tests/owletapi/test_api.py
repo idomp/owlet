@@ -139,9 +139,9 @@ async def test_rejected_token_is_refreshed_and_retried_once(
 async def test_rejected_twice_raises_auth_error(
     mock_api: FakeSession, authed_api: OwletAPI
 ) -> None:
-    mock_api.post(ACTIVATE_URL, status=401)
+    mock_api.get(PROPERTIES_URL, status=401)
     mock_refresh(mock_api)
-    mock_api.post(ACTIVATE_URL, status=401)
+    mock_api.get(PROPERTIES_URL, status=401)
 
     with pytest.raises(OwletAuthenticationError):
         await authed_api.get_properties(DSN)
@@ -151,7 +151,7 @@ async def test_server_error_raises_connection_error(
     mock_api: FakeSession, authed_api: OwletAPI
 ) -> None:
     """A 5xx no longer triggers a re-authentication loop."""
-    mock_api.post(ACTIVATE_URL, status=503)
+    mock_api.get(PROPERTIES_URL, status=503)
     with pytest.raises(OwletConnectionError):
         await authed_api.get_properties(DSN)
     assert len(mock_api.requests) == 1
@@ -160,7 +160,7 @@ async def test_server_error_raises_connection_error(
 async def test_network_error_raises_connection_error(
     mock_api: FakeSession, authed_api: OwletAPI
 ) -> None:
-    mock_api.post(ACTIVATE_URL, exception=aiohttp.ClientConnectionError())
+    mock_api.get(PROPERTIES_URL, exception=aiohttp.ClientConnectionError())
     with pytest.raises(OwletConnectionError):
         await authed_api.get_properties(DSN)
 
@@ -168,8 +168,51 @@ async def test_network_error_raises_connection_error(
 async def test_timeout_raises_connection_error(
     mock_api: FakeSession, authed_api: OwletAPI
 ) -> None:
-    mock_api.post(ACTIVATE_URL, exception=TimeoutError())
+    mock_api.get(PROPERTIES_URL, exception=TimeoutError())
     with pytest.raises(OwletConnectionError):
+        await authed_api.get_properties(DSN)
+
+
+async def test_read_comes_first_and_survives_a_failed_activation(
+    mock_api: FakeSession, session: FakeSession
+) -> None:
+    """A failed APP_ACTIVE write neither hides the data nor pins the interval."""
+    api = OwletAPI(
+        REGION,
+        token="valid_token",
+        expiry=time.time() + 3600,
+        refresh="r",
+        session=session,
+        activation_interval=60,
+    )
+    mock_api.get(PROPERTIES_URL, payload=load("properties_v3.json"), repeat=True)
+    mock_api.post(ACTIVATE_URL, status=503)
+    mock_api.post(ACTIVATE_URL, status=429)
+    mock_api.post(ACTIVATE_URL, payload={})
+
+    for _ in range(3):
+        response = await api.get_properties(DSN)
+        assert "REAL_TIME_VITALS" in response["response"]
+
+    # Failed writes are retried on the next poll, the successful one is kept.
+    assert _count(mock_api, "POST", ACTIVATE_URL) == 3
+    await api.get_properties(DSN)
+    assert _count(mock_api, "POST", ACTIVATE_URL) == 3
+
+    order = [verb for (verb, url) in mock_api.requests]
+    assert order.index("GET") < order.index("POST")
+
+
+async def test_activation_auth_error_still_propagates(
+    mock_api: FakeSession, authed_api: OwletAPI
+) -> None:
+    """Only transient failures of the write are swallowed, a dead login is not."""
+    mock_api.get(PROPERTIES_URL, payload=load("properties_v3.json"), repeat=True)
+    mock_api.post(ACTIVATE_URL, status=401)
+    mock_refresh(mock_api)
+    mock_api.post(ACTIVATE_URL, status=401)
+
+    with pytest.raises(OwletAuthenticationError):
         await authed_api.get_properties(DSN)
 
 
@@ -336,7 +379,7 @@ async def test_rate_limit_raises_with_retry_after(
     mock_api: FakeSession, authed_api: OwletAPI
 ) -> None:
     """A 429 is a rate limit carrying the cloud's Retry-After, not a re-login."""
-    mock_api.post(ACTIVATE_URL, status=429, headers={"Retry-After": "120"})
+    mock_api.get(PROPERTIES_URL, status=429, headers={"Retry-After": "120"})
 
     with pytest.raises(OwletRateLimitError) as excinfo:
         await authed_api.get_properties(DSN)
@@ -349,7 +392,7 @@ async def test_rate_limit_retry_after_http_date(
     mock_api: FakeSession, authed_api: OwletAPI
 ) -> None:
     when = format_datetime(datetime.now(UTC) + timedelta(seconds=90), usegmt=True)
-    mock_api.post(ACTIVATE_URL, status=429, headers={"Retry-After": when})
+    mock_api.get(PROPERTIES_URL, status=429, headers={"Retry-After": when})
 
     with pytest.raises(OwletRateLimitError) as excinfo:
         await authed_api.get_properties(DSN)
@@ -360,7 +403,7 @@ async def test_rate_limit_retry_after_http_date(
 async def test_rate_limit_without_header(
     mock_api: FakeSession, authed_api: OwletAPI
 ) -> None:
-    mock_api.post(ACTIVATE_URL, status=429)
+    mock_api.get(PROPERTIES_URL, status=429)
 
     with pytest.raises(OwletRateLimitError) as excinfo:
         await authed_api.get_properties(DSN)

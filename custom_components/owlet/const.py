@@ -10,6 +10,15 @@ DOMAIN: Final = "owlet"
 CONF_OWLET_EXPIRY: Final = "expiry"
 CONF_OWLET_REFRESH: Final = "refresh"
 CONF_STALE_THRESHOLD: Final = "stale_threshold"
+CONF_ACTIVATION_INTERVAL: Final = "activation_interval"
+
+# Seconds between two APP_ACTIVE writes per sock. APP_ACTIVE tells the base
+# station a client is watching, which makes it upload vitals; the base keeps
+# uploading for a while after each write, so writing on every poll is waste.
+# The default is provisional until the base station's own timeout is measured.
+DEFAULT_ACTIVATION_INTERVAL: Final = 60
+MIN_ACTIVATION_INTERVAL: Final = 10
+MAX_ACTIVATION_INTERVAL: Final = 600
 
 REGIONS: Final = ["europe", "world"]
 SUPPORTED_VERSIONS: Final = [2, 3]

@@ -49,11 +49,13 @@
         "title": "Opties voor Owlet",
         "data": {
           "scan_interval": "Polling-interval (seconden)",
-          "stale_threshold": "Drempel verouderde gegevens (minuten)"
+          "stale_threshold": "Drempel verouderde gegevens (minuten)",
+          "activation_interval": "Activeringsinterval (seconden)"
         },
         "data_description": {
           "scan_interval": "Aantal seconden tussen twee aanvragen bij de Owlet-cloud, minimum 5. Elke poll kost meerdere API-calls per sok, een lagere waarde verhoogt het risico op rate limiting.",
-          "stale_threshold": "Als de Owlet-cloud zo veel minuten geen nieuwe meting heeft, worden de vitale waarden onbeschikbaar en gaat de sensor Verouderde gegevens aan. Zet op 0 om uit te schakelen."
+          "stale_threshold": "Als de Owlet-cloud zo veel minuten geen nieuwe meting heeft, worden de vitale waarden onbeschikbaar en gaat de sensor Verouderde gegevens aan. Zet op 0 om uit te schakelen.",
+          "activation_interval": "Aantal seconden tussen twee keer schrijven van APP_ACTIVE, het signaal dat het basisstation vertelt dat er een client meekijkt zodat het vitale waarden blijft uploaden. Tussen 10 en 600. Verlaag de waarde als er tussen twee keer schrijven geen metingen meer binnenkomen."
         }
       }
     }

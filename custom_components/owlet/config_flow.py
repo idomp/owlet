@@ -26,9 +26,13 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from . import OwletConfigEntry
 from .const import (
+    CONF_ACTIVATION_INTERVAL,
     CONF_STALE_THRESHOLD,
+    DEFAULT_ACTIVATION_INTERVAL,
     DEFAULT_STALE_THRESHOLD,
     DOMAIN,
+    MAX_ACTIVATION_INTERVAL,
+    MIN_ACTIVATION_INTERVAL,
     MIN_POLLING_INTERVAL,
     OWLET_CREDENTIAL_ERRORS,
     POLLING_INTERVAL,
@@ -142,6 +146,7 @@ class OwletConfigFlow(ConfigFlow, domain=DOMAIN):
                     options={
                         CONF_SCAN_INTERVAL: POLLING_INTERVAL,
                         CONF_STALE_THRESHOLD: DEFAULT_STALE_THRESHOLD,
+                        CONF_ACTIVATION_INTERVAL: DEFAULT_ACTIVATION_INTERVAL,
                     },
                 )
 
@@ -246,6 +251,15 @@ class OwletOptionsFlow(OptionsFlowWithReload):
                     CONF_STALE_THRESHOLD,
                     default=options.get(CONF_STALE_THRESHOLD, DEFAULT_STALE_THRESHOLD),
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=120)),
+                vol.Required(
+                    CONF_ACTIVATION_INTERVAL,
+                    default=options.get(
+                        CONF_ACTIVATION_INTERVAL, DEFAULT_ACTIVATION_INTERVAL
+                    ),
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(min=MIN_ACTIVATION_INTERVAL, max=MAX_ACTIVATION_INTERVAL),
+                ),
             }
         )
 

@@ -671,16 +671,33 @@ class OwletAPI:
     async def _fetch_properties(
         self, device: str, activate: bool
     ) -> dict[str, dict[str, Any]]:
-        """Fetch the raw properties without reporting refreshed tokens."""
-        if activate:
-            await self._maybe_activate(device)
+        """Fetch the raw properties without reporting refreshed tokens.
+
+        The read comes first and never depends on the APP_ACTIVE write: what
+        the cloud already has is returned even when the write fails, and a
+        failed write is simply retried on the next poll.
+        """
         api_response = await self._request(
             "GET",
             f"/dsns/{device}/properties.json",
         )
         if not isinstance(api_response, list):
             raise OwletError("Unexpected response type from request.")
+        if activate:
+            await self._activate_quietly(device)
         return {item["property"]["name"]: item["property"] for item in api_response}
+
+    async def _activate_quietly(self, device: str) -> None:
+        """Write APP_ACTIVE when due; a transient failure is logged, not raised."""
+        try:
+            await self._maybe_activate(device)
+        except OwletConnectionError as err:
+            logger.warning(
+                "Could not tell the base station of %s that a client is watching, "
+                "retrying on the next poll: %s",
+                device,
+                err,
+            )
 
     async def _request(
         self,

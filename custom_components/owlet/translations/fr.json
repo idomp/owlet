@@ -49,11 +49,13 @@
         "title": "Configurer les options pour Owlet",
         "data": {
           "scan_interval": "Intervalle d'interrogation (secondes)",
-          "stale_threshold": "Seuil de données obsolètes (minutes)"
+          "stale_threshold": "Seuil de données obsolètes (minutes)",
+          "activation_interval": "Intervalle d'activation (secondes)"
         },
         "data_description": {
           "scan_interval": "Secondes entre deux requêtes vers le cloud Owlet, minimum 5. Chaque interrogation coûte plusieurs appels API par chaussette, une valeur plus basse augmente le risque de limitation.",
-          "stale_threshold": "Si le cloud Owlet ne reçoit aucune nouvelle mesure pendant ce nombre de minutes, les signes vitaux deviennent indisponibles et le capteur Données obsolètes s'active. Mettez 0 pour désactiver."
+          "stale_threshold": "Si le cloud Owlet ne reçoit aucune nouvelle mesure pendant ce nombre de minutes, les signes vitaux deviennent indisponibles et le capteur Données obsolètes s'active. Mettez 0 pour désactiver.",
+          "activation_interval": "Secondes entre deux écritures d'APP_ACTIVE, le signal qui indique à la station de base qu'un client la regarde pour qu'elle continue d'envoyer les signes vitaux. Entre 10 et 600. Réduisez la valeur si les mesures cessent d'arriver entre deux écritures."
         }
       }
     }

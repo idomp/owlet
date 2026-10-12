@@ -28,8 +28,10 @@ from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
+    CONF_ACTIVATION_INTERVAL,
     CONF_OWLET_EXPIRY,
     CONF_OWLET_REFRESH,
+    DEFAULT_ACTIVATION_INTERVAL,
     DOMAIN,
     OWLET_CREDENTIAL_ERRORS,
     SUPPORTED_VERSIONS,
@@ -54,6 +56,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: OwletConfigEntry) -> boo
         expiry=entry.data[CONF_OWLET_EXPIRY],
         refresh=entry.data[CONF_OWLET_REFRESH],
         session=async_get_clientsession(hass),
+        activation_interval=entry.options.get(
+            CONF_ACTIVATION_INTERVAL, DEFAULT_ACTIVATION_INTERVAL
+        ),
     )
 
     try:

@@ -124,6 +124,7 @@ Gauge ranges and trend graphs are for display only and have no medical meaning. 
 | --- | --- | --- |
 | Polling interval | 10 s | Seconds between requests to the Owlet cloud, minimum 5. Every poll costs several API calls per sock, a lower value raises the risk of rate limiting. |
 | Stale data threshold | 5 min | Minutes without a new reading before the data is treated as stale. Set to 0 to disable. |
+| Activation interval | 60 s | Seconds between two `APP_ACTIVE` writes (10 to 600). This flag tells the base station a client is watching, which makes it upload vitals; it is the only thing the integration ever writes. Lower it if readings stop arriving between writes. |
 
 The integration also supports **Reconfigure** (change region or log in again) and asks you to log in again automatically when the Owlet session expires.
 

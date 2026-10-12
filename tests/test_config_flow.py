@@ -9,7 +9,9 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.owlet.const import (
+    CONF_ACTIVATION_INTERVAL,
     CONF_STALE_THRESHOLD,
+    DEFAULT_ACTIVATION_INTERVAL,
     DEFAULT_STALE_THRESHOLD,
     DOMAIN,
     POLLING_INTERVAL,
@@ -30,7 +32,7 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 
 TOKENS = {"api_token": "api_token", "expiry": 100, "refresh": "refresh_token"}
 NEW_TOKENS = {"api_token": "new_token", "expiry": 200, "refresh": "new_refresh"}
@@ -77,6 +79,7 @@ async def test_user_flow(hass: HomeAssistant, mock_login: AsyncMock) -> None:
     assert result["options"] == {
         CONF_SCAN_INTERVAL: POLLING_INTERVAL,
         CONF_STALE_THRESHOLD: DEFAULT_STALE_THRESHOLD,
+        CONF_ACTIVATION_INTERVAL: DEFAULT_ACTIVATION_INTERVAL,
     }
 
 
@@ -190,10 +193,34 @@ async def test_options_flow(
     assert result["step_id"] == "init"
 
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_SCAN_INTERVAL: 30, CONF_STALE_THRESHOLD: 0}
+        result["flow_id"],
+        {
+            CONF_SCAN_INTERVAL: 30,
+            CONF_STALE_THRESHOLD: 0,
+            CONF_ACTIVATION_INTERVAL: 120,
+        },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert mock_config_entry.options == {
         CONF_SCAN_INTERVAL: 30,
         CONF_STALE_THRESHOLD: 0,
+        CONF_ACTIVATION_INTERVAL: 120,
     }
+
+
+async def test_options_flow_rejects_out_of_range_activation(
+    hass: HomeAssistant, mock_login: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """Activation interval is bounded so the base can neither be hammered nor forgotten."""
+    mock_config_entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+
+    with pytest.raises(InvalidData):
+        await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {
+                CONF_SCAN_INTERVAL: 30,
+                CONF_STALE_THRESHOLD: 5,
+                CONF_ACTIVATION_INTERVAL: 1,
+            },
+        )
