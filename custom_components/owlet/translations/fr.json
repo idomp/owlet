@@ -55,7 +55,7 @@
         "data_description": {
           "scan_interval": "Secondes entre deux requêtes vers le cloud Owlet, minimum 5. Chaque interrogation coûte plusieurs appels API par chaussette, une valeur plus basse augmente le risque de limitation.",
           "stale_threshold": "Si le cloud Owlet ne reçoit aucune nouvelle mesure pendant ce nombre de minutes, les signes vitaux deviennent indisponibles et le capteur Données obsolètes s'active. Mettez 0 pour désactiver.",
-          "activation_interval": "Secondes entre deux écritures d'APP_ACTIVE, le signal qui indique à la station de base qu'un client la regarde pour qu'elle continue d'envoyer les signes vitaux. Entre 10 et 600. Réduisez la valeur si les mesures cessent d'arriver entre deux écritures."
+          "activation_interval": "Durée maximale entre deux écritures d'APP_ACTIVE, le signal qui indique à la station de base qu'un client la regarde pour qu'elle continue d'envoyer les signes vitaux. La station de base envoie pendant environ 45 secondes après chaque écriture puis signale qu'elle s'est arrêtée ; l'intégration écrit alors de nouveau dès qu'elle le voit, cette valeur n'est donc qu'un plafond. Entre 10 et 600."
         }
       }
     }

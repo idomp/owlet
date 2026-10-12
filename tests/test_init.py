@@ -128,10 +128,10 @@ async def test_activation_interval_option_reaches_the_client(
     mock_config_entry: MockConfigEntry,
     mock_owlet_api: dict[str, AsyncMock],
 ) -> None:
-    """The client activates at the configured cadence, 60 s by default."""
+    """The client activates at the configured cadence, 30 s by default."""
     await setup_integration(hass, mock_config_entry)
     coordinator = next(iter(mock_config_entry.runtime_data.values()))
-    assert coordinator.sock.api._activation_interval == 60
+    assert coordinator.sock.api._activation_interval == 30
 
     hass.config_entries.async_update_entry(
         mock_config_entry,

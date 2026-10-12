@@ -27,7 +27,7 @@ A Home Assistant custom integration for the Owlet Smart Sock 2, Smart Sock 3 and
 - **Honest values.** A heart rate, oxygen or skin temperature of 0 and a ten minute average of 255 mean "not measuring" and show as unknown instead of being recorded. A null alert is unknown, not off. Unreadable fields never break the update.
 - **More of what the sock reports.** Discomfort alert, low integrity reading, the preview priority alarms, base monitoring status, battery status and the time of the last red alert.
 - **No needless re-logins.** Rate limits and server errors delay the next poll (honouring `Retry-After`, then backing off) instead of asking for the password again. One token refresh at a time; refreshed tokens are stored even when the poll failed.
-- **Fewer requests.** `APP_ACTIVE` is written once per activation interval (60 s by default) instead of before every poll, after the read, and never during discovery or login.
+- **Fewer requests, no gaps.** `APP_ACTIVE` is written when the base station reports it went idle (it uploads for about 45 seconds per write) or at most every activation interval (30 s by default), instead of before every poll; after the read, and never during discovery or login.
 - **Accounts per region.** The same email can be set up in both Owlet regions; entries from earlier releases migrate automatically.
 - **Diagnostics by allowlist.** Only known-harmless fields are included, so nothing Owlet adds later can leak identifiers.
 - **Blueprint and dashboards** only react to real transitions: an alert that reappears after being unavailable sends no notification, and "No Owlet alerts active" shows only while every alert is really off.
@@ -136,14 +136,14 @@ Gauge ranges and trend graphs are for display only and have no medical meaning. 
 | --- | --- | --- |
 | Polling interval | 10 s | Seconds between requests to the Owlet cloud, minimum 5. Every poll costs several API calls per sock, a lower value raises the risk of rate limiting. |
 | Stale data threshold | 5 min | Minutes without a new reading before the data is treated as stale. Set to 0 to disable. |
-| Activation interval | 60 s | Seconds between two `APP_ACTIVE` writes (10 to 600). This flag tells the base station a client is watching, which makes it upload vitals; it is the only thing the integration ever writes. Lower it if readings stop arriving between writes. |
+| Activation interval | 30 s | Longest time between two `APP_ACTIVE` writes (10 to 600). This flag tells the base station a client is watching, which makes it upload vitals; it is the only thing the integration ever writes. The base station uploads for about 45 seconds after each write, then sets the flag back to 0 itself; the integration writes again as soon as it sees that, so the interval is only a ceiling. |
 
 The integration also supports **Reconfigure** (change region or log in again) and asks you to log in again when the Owlet login really is no longer valid. Rate limits and outages never trigger that: the next poll is simply delayed.
 
 ## Troubleshooting
 
 - **Values stop changing**: check the Data stale and Last reading entities and the attributes of Data stale (`reading_status` says why). If the Owlet app shows fresh data but Home Assistant does not, download diagnostics (device page > three dots > Download diagnostics) and open an issue. Diagnostics are built from an allowlist: they contain the region, the options, the normalised values and, for known-harmless raw properties, their value and timestamp. Tokens, email, serial numbers, MAC addresses and baby details are never included.
-- **Readings stop between activations**: lower the activation interval in the options.
+- **Readings stop between activations**: the integration re-activates as soon as the base station reports it went idle; if readings still show gaps, lower the activation interval in the options.
 - Enable debug logging:
 
   ```yaml

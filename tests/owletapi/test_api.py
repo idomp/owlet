@@ -551,3 +551,67 @@ async def test_concurrent_polls_refresh_once(
 
     assert _count(mock_api, "POST", REFRESH_URL) == 1
     assert api.tokens["api_token"] == "new_token"
+
+
+def _with_app_active(value: object) -> list:
+    """Return the v3 fixture with the cloud's APP_ACTIVE value replaced."""
+    items = load("properties_v3.json")
+    for item in items:
+        if item["property"]["name"] == "APP_ACTIVE":
+            item["property"]["value"] = value
+    return items
+
+
+@pytest.mark.parametrize("idle_value", [0, "0", False, "false"])
+async def test_reactivates_as_soon_as_the_base_reports_idle(
+    mock_api: FakeSession, session: FakeSession, idle_value: object
+) -> None:
+    """The base clears APP_ACTIVE when it stops uploading: write again at once."""
+    api = OwletAPI(
+        REGION,
+        token="valid_token",
+        expiry=time.time() + 3600,
+        refresh="r",
+        session=session,
+        activation_interval=600,
+    )
+    mock_api.post(ACTIVATE_URL, payload={}, repeat=True)
+    mock_api.get(PROPERTIES_URL, payload=_with_app_active(1))
+    mock_api.get(PROPERTIES_URL, payload=_with_app_active(1))
+    mock_api.get(PROPERTIES_URL, payload=_with_app_active(idle_value))
+    mock_api.get(PROPERTIES_URL, payload=_with_app_active(1))
+
+    await api.get_properties(DSN)  # first poll always activates
+    await api.get_properties(DSN)  # flag still 1, within the interval: no write
+    assert _count(mock_api, "POST", ACTIVATE_URL) == 1
+
+    await api.get_properties(DSN)  # the base went idle: write now
+    assert _count(mock_api, "POST", ACTIVATE_URL) == 2
+
+    await api.get_properties(DSN)  # flag 1 again: back to the interval
+    assert _count(mock_api, "POST", ACTIVATE_URL) == 2
+
+
+async def test_missing_app_active_falls_back_to_the_interval(
+    mock_api: FakeSession, session: FakeSession
+) -> None:
+    api = OwletAPI(
+        REGION,
+        token="valid_token",
+        expiry=time.time() + 3600,
+        refresh="r",
+        session=session,
+        activation_interval=600,
+    )
+    without = [
+        item
+        for item in load("properties_v3.json")
+        if item["property"]["name"] != "APP_ACTIVE"
+    ]
+    mock_api.post(ACTIVATE_URL, payload={}, repeat=True)
+    mock_api.get(PROPERTIES_URL, payload=without, repeat=True)
+
+    await api.get_properties(DSN)
+    await api.get_properties(DSN)
+
+    assert _count(mock_api, "POST", ACTIVATE_URL) == 1

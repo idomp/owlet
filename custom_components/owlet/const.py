@@ -13,10 +13,11 @@ CONF_STALE_THRESHOLD: Final = "stale_threshold"
 CONF_ACTIVATION_INTERVAL: Final = "activation_interval"
 
 # Seconds between two APP_ACTIVE writes per sock. APP_ACTIVE tells the base
-# station a client is watching, which makes it upload vitals; the base keeps
-# uploading for a while after each write, so writing on every poll is waste.
-# The default is provisional until the base station's own timeout is measured.
-DEFAULT_ACTIVATION_INTERVAL: Final = 60
+# station a client is watching, which makes it upload vitals. Measured on a
+# Dream Sock (base firmware 3.23.3): the base uploads for about 45 seconds
+# after a write, then sets APP_ACTIVE back to 0 and stops. The client also
+# writes again as soon as it sees that 0, so this interval is the ceiling.
+DEFAULT_ACTIVATION_INTERVAL: Final = 30
 MIN_ACTIVATION_INTERVAL: Final = 10
 MAX_ACTIVATION_INTERVAL: Final = 600
 

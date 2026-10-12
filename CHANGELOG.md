@@ -1,6 +1,10 @@
 # Changelog
 
 <!--next-version-placeholder-->
+## 2026.10.1 (2026-10-12)
+### Fix
+* No more gaps in the readings. Measured on a Dream Sock: the base station uploads vitals for about 45 seconds after `APP_ACTIVE` is written, then sets the flag back to 0 itself and stops, so the previous 60 s default left a gap of up to 30 s every minute. The integration now writes `APP_ACTIVE` again as soon as the cloud shows the base cleared it, and the activation interval (default now 30 s) is only a ceiling.
+
 ## 2026.10.0 (2026-10-12)
 First release of [idomp/owlet](https://github.com/idomp/owlet), a fork of [lucasvollebergh/owlet](https://github.com/lucasvollebergh/owlet) 2026.9.1 that is read-only towards the base station and stricter about what it shows. Drop-in replacement: same domain and entity unique ids.
 ### Breaking

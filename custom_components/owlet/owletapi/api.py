@@ -81,6 +81,22 @@ def _transient_error(status: int, headers: Any) -> OwletConnectionError | None:
     return None
 
 
+def _base_went_idle(properties: dict[str, dict[str, Any]]) -> bool:
+    """Return True when the base station reports it stopped uploading.
+
+    The base station uploads vitals for roughly 45 seconds after APP_ACTIVE
+    is written, then writes APP_ACTIVE back to 0 itself. Seeing 0 means
+    another write is due now, whatever the activation interval says.
+    """
+    prop = properties.get("APP_ACTIVE")
+    if not isinstance(prop, dict):
+        return False
+    value = prop.get("value")
+    if isinstance(value, str):
+        value = value.strip().lower()
+    return value in (0, False, "0", "false")
+
+
 @dataclass
 class _Reply:
     status: int
@@ -633,11 +649,16 @@ class OwletAPI:
         )
         self._last_activation[device_serial] = time.monotonic()
 
-    async def _maybe_activate(self, device_serial: str) -> None:
-        """Activate the device unless it was activated within the activation interval."""
+    async def _maybe_activate(self, device_serial: str, force: bool = False) -> None:
+        """Activate the device unless it was activated within the activation interval.
+
+        force skips the interval: used when the base station reported that it
+        went idle, so waiting would only lose readings.
+        """
         last = self._last_activation.get(device_serial)
         if (
-            self._activation_interval > 0
+            not force
+            and self._activation_interval > 0
             and last is not None
             and time.monotonic() - last < self._activation_interval
         ):
@@ -683,14 +704,17 @@ class OwletAPI:
         )
         if not isinstance(api_response, list):
             raise OwletError("Unexpected response type from request.")
+        properties = {
+            item["property"]["name"]: item["property"] for item in api_response
+        }
         if activate:
-            await self._activate_quietly(device)
-        return {item["property"]["name"]: item["property"] for item in api_response}
+            await self._activate_quietly(device, force=_base_went_idle(properties))
+        return properties
 
-    async def _activate_quietly(self, device: str) -> None:
+    async def _activate_quietly(self, device: str, force: bool = False) -> None:
         """Write APP_ACTIVE when due; a transient failure is logged, not raised."""
         try:
-            await self._maybe_activate(device)
+            await self._maybe_activate(device, force=force)
         except OwletConnectionError as err:
             logger.warning(
                 "Could not tell the base station of %s that a client is watching, "
