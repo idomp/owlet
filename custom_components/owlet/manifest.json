@@ -2,13 +2,13 @@
   "domain": "owlet",
   "name": "Owlet Smart Sock",
   "codeowners": [
-    "@lucasvollebergh"
+    "@idomp"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/lucasvollebergh/owlet",
+  "documentation": "https://github.com/idomp/owlet",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/lucasvollebergh/owlet/issues",
+  "issue_tracker": "https://github.com/idomp/owlet/issues",
   "requirements": [],
-  "version": "2026.9.1"
+  "version": "2026.10.0"
 }
